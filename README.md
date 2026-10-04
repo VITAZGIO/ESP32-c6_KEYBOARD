@@ -1,3 +1,11 @@
+<div align="right">
+
+🌐 [English](README.en.md) · **Русский**
+
+</div>
+
+> 🇬🇧 **This page is in Russian.** An English version is available: **[README.en.md](README.en.md)**.
+
 <div align="center">
 
 # ⌨️ AULA F75 → Zigbee-кнопки
@@ -378,7 +386,8 @@ ESP32-c6_AULA_KEYBOARD/
 ├── ota.csv                   разметка флеша с двумя разделами под OTA
 ├── secrets.example.ini       шаблон → secrets.ini (IP для OTA)
 ├── .gitignore
-├── README.md
+├── README.md                 документация (русский)
+├── README.en.md              документация (английский)
 ├── src/
 │   ├── main.cpp              прошивка
 │   └── secrets.example.h     шаблон → secrets.h (Wi-Fi, пароль OTA)
