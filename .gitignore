@@ -1,0 +1,21 @@
+# Пароли и ключи — локально, в репозиторий не попадают
+src/secrets.h
+secrets.ini
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+.vscode/
+.clang_complete
+.gcc-flags.json
+
+# Сборка
+*.bin
+*.elf
+*.hex
+*.map
+
+# Система
+.DS_Store
+Thumbs.db
