@@ -1,9 +1,38 @@
-# AULA F75 — Zigbee-кнопки внутри клавиатуры
+<div align="center">
+
+# ⌨️ AULA F75 → Zigbee-кнопки
+
+**ESP32-C6 внутри клавиатуры превращает End + цифры в 12 беспроводных кнопок для умного дома**
+
+![Zigbee](https://img.shields.io/badge/Zigbee-End%20Device-blue)
+![MCU](https://img.shields.io/badge/MCU-ESP32--C6-red)
+![Zigbee2MQTT](https://img.shields.io/badge/Zigbee2MQTT-VITAZGIO%20AulaKeys-green)
+![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino-orange)
+
+<img src="Photo/Keyboard.png" alt="AULA F75" width="900">
+
+</div>
+
+---
+
+## 📌 О проекте
 
 ESP32-C6 сидит внутри клавиатуры, пассивно слушает матрицу клавиш и отдаёт
 в Zigbee2MQTT **12 кнопок**. Работает независимо от ПК — хоть выключен, хоть нет.
 
-Устройство в z2m: **VITAZGIO / AulaKeys**, тип — **Zigbee End Device** (не роутер).
+- 🔌 Работает в любом режиме клавиатуры: провод, 2.4G, Bluetooth
+- 🔋 Питание от штатного аккумулятора клавиатуры (Li-Po 4000 мА·ч)
+- 📡 Устройство в z2m: **VITAZGIO / AulaKeys**, тип — **Zigbee End Device**
+  (оконечное устройство, не ретранслирует чужой трафик, в отличие от роутера)
+- 🔄 Обновление прошивки по воздуху (OTA — Over-The-Air, без USB-кабеля)
+
+### 🔧 Как выглядит внутри
+
+Плата клавиатуры в разборе: тонкие провода идут от точек матрицы к ESP32-C6.
+
+<div align="center">
+<img src="Photo/image.png" alt="Плата клавиатуры в разборе" width="900">
+</div>
 
 ---
 
