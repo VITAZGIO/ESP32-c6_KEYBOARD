@@ -52,7 +52,7 @@ Highlights:
 |---|---|
 | AULA F75 keyboard (board `SI-2635-916-3632-V02`) | the keyboard itself |
 | ESP32-C6 (I use nanoESP32-C6) | the brain and the Zigbee radio |
-| DSN-MINI-360 step-down module + 100 µF capacitor | 3.3 V for the ESP from the battery |
+| Step-up module with a fixed 5/8/9/12 V output (set to 5 V) + 100 µF capacitor | 5 V for the ESP from the battery |
 | 1S BMS (battery protection) | so the Li-Po is not over-discharged |
 | Toggle switch | separate power switch for the ESP |
 | Thin wires, 6 × 10 kΩ resistors | connecting to the key matrix |
@@ -68,6 +68,21 @@ The keyboard PCB opened up. Thin wires run from the matrix points to the ESP32-C
 
 <div align="center">
 <img src="Photo/image.png" alt="Keyboard PCB opened up" width="900">
+</div>
+
+The ESP32-C6 installed in the case: the step-up module (top right), the BMS with the
+capacitor (center) and the battery.
+
+<div align="center">
+<img src="Photo/esp_in_case.jpg" alt="ESP32-C6 inside the keyboard case" width="900">
+</div>
+
+The wiring before installing it in the case, top and bottom of the board.
+
+<div align="center">
+<img src="Photo/esp_wiring_top.jpg" alt="ESP32-C6 wiring, top view" width="900">
+<br>
+<img src="Photo/esp_wiring_bottom.jpg" alt="ESP32-C6 wiring, bottom view" width="400">
 </div>
 
 ---
@@ -161,24 +176,32 @@ and the matrix lines sit at 4.2 V. Battery: LTZK 606090, Li-Po 3.7 V, 4000 mAh.
 Battery (−) ──[1S BMS: B− in, P− out]──┐
 Battery (+) ──────────────────────────┬┴── keyboard
                                       │
-                            [switch]──┴──[DSN-MINI-360]── 3V3 pin of the C6 board
+                            [switch]──┴──[step-up IN+/IN−]
+                                           OUT+ ── 5V pin of the C6 board
+                                           OUT− ── GND of the C6 board
                                            100 µF capacitor between 3V3 and GND
 ```
 
-- **DSN-MINI-360** is a switching step-down module (a buck converter: it lowers the
-  voltage with high efficiency and little heat). Before installing, set its output to
-  **3.3 V** with the trimmer resistor (check with a multimeter!).
-  The ESP board's built-in **AMS1117 regulator needs at least ~4.5 V** and won't work from
-  a Li-Po. The linear regulator HT7333 didn't work for me, so a step-down module is used
-  instead. The board's `5V` pin is not used.
+- **Step-up module**: a switching boost converter (it raises the voltage above the input,
+  also with high efficiency). Its output is **fixed** at 5 / 8 / 9 / 12 V, selected with
+  the `A` and `B` jumpers according to the table on the back of the board (a jumper is a
+  pair of pads you bridge with a blob of solder). You need **5 V**: check the output with
+  a multimeter before installing!
+- The 5 V goes to the board's `5V` pin, and the built-in **AMS1117** regulator makes 3.3 V
+  for the chip from it. It doesn't work straight from a Li-Po because it needs at least
+  ~4.5 V at its input, so the battery voltage (3.0–4.2 V) is boosted to 5 V first.
+- **What didn't work:** the linear regulator HT7333 (3.3 V straight into the `3V3` pin)
+  and a module with a trimmer resistor (a little screw pot for setting the output by hand).
+  The fixed-output step-up module got it running.
 - **1S BMS** (DW01A + 8205A) is over-discharge protection, placed **in the negative wire**
   between the battery and the board. The keyboard itself only has the XT4097 charger.
 - **100 µF capacitor** next to the board: Zigbee transmission draws pulses of up to 100 mA.
 - **Its own switch**: the keyboard can't be physically turned off (its switch only changes
   the USB/2.4G/BT mode), so the ESP is powered down separately.
 
-Turn the switch off when flashing over USB. Feed the `3V3` pin only with the output of the
-DSN-MINI-360 set to 3.3 V beforehand: 4.2 V will kill the chip.
+Turn the switch off when flashing over USB, otherwise 5 V from USB and 5 V from the
+step-up module meet on the same pin. Don't feed anything into the `3V3` pin from outside:
+5 V or 4.2 V from the battery will kill the chip.
 
 ### Battery measurement
 
