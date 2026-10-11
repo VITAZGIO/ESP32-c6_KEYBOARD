@@ -52,7 +52,7 @@ Highlights:
 |---|---|
 | AULA F75 keyboard (board `SI-2635-916-3632-V02`) | the keyboard itself |
 | ESP32-C6 (I use nanoESP32-C6) | the brain and the Zigbee radio |
-| DSN-MINI-360 step-down module + 100 µF capacitor | 3.3 V for the ESP from the battery |
+| Step-up module with a fixed 5/8/9/12 V output (5 V = no jumpers) + 220 µF 16 V capacitor | 5 V for the ESP from the battery |
 | 1S BMS (battery protection) | so the Li-Po is not over-discharged |
 | Toggle switch | separate power switch for the ESP |
 | Thin wires, 6 × 10 kΩ resistors | connecting to the key matrix |
@@ -68,6 +68,21 @@ The keyboard PCB opened up. Thin wires run from the matrix points to the ESP32-C
 
 <div align="center">
 <img src="Photo/image.png" alt="Keyboard PCB opened up" width="900">
+</div>
+
+The ESP32-C6 installed in the case: the step-up module (top right), the BMS with the
+capacitor (center) and the battery.
+
+<div align="center">
+<img src="Photo/esp_in_case.jpg" alt="ESP32-C6 inside the keyboard case" width="900">
+</div>
+
+The wiring before installing it in the case, top and bottom of the board.
+
+<div align="center">
+<img src="Photo/esp_wiring_top.jpg" alt="ESP32-C6 wiring, top view" width="900">
+<br>
+<img src="Photo/esp_wiring_bottom.jpg" alt="ESP32-C6 wiring, bottom view" width="400">
 </div>
 
 ---
@@ -161,24 +176,35 @@ and the matrix lines sit at 4.2 V. Battery: LTZK 606090, Li-Po 3.7 V, 4000 mAh.
 Battery (−) ──[1S BMS: B− in, P− out]──┐
 Battery (+) ──────────────────────────┬┴── keyboard
                                       │
-                            [switch]──┴──[DSN-MINI-360]── 3V3 pin of the C6 board
-                                           100 µF capacitor between 3V3 and GND
+                            [switch]──┴──[step-up IN+/IN−]
+                                           OUT+ ── 5V pin of the C6 board
+                                           OUT− ── GND of the C6 board
+         220 µF 16 V capacitor at the BMS, on the supply before the step-up
 ```
 
-- **DSN-MINI-360** is a switching step-down module (a buck converter: it lowers the
-  voltage with high efficiency and little heat). Before installing, set its output to
-  **3.3 V** with the trimmer resistor (check with a multimeter!).
-  The ESP board's built-in **AMS1117 regulator needs at least ~4.5 V** and won't work from
-  a Li-Po. The linear regulator HT7333 didn't work for me, so a step-down module is used
-  instead. The board's `5V` pin is not used.
+- **Step-up module**: a switching boost converter (it raises the voltage above the input,
+  also with high efficiency). Its output is **fixed** at 5 / 8 / 9 / 12 V, selected with
+  the `A` and `B` jumpers according to the table on the back of the board (a jumper is a
+  pair of pads you bridge with a blob of solder). You need **5 V**, which is the default:
+  **leave jumpers A and B alone, both open**. Still check the output with a multimeter
+  before installing!
+- The 5 V goes to the board's `5V` pin, and the built-in **AMS1117** regulator makes 3.3 V
+  for the chip from it. It doesn't work straight from a Li-Po because it needs at least
+  ~4.5 V at its input, so the battery voltage (3.0–4.2 V) is boosted to 5 V first.
+- **What didn't work:** the linear regulator HT7333 (3.3 V straight into the `3V3` pin)
+  and a module with a trimmer resistor (a little screw pot for setting the output by hand).
+  The fixed-output step-up module got it running.
 - **1S BMS** (DW01A + 8205A) is over-discharge protection, placed **in the negative wire**
   between the battery and the board. The keyboard itself only has the XT4097 charger.
-- **100 µF capacitor** next to the board: Zigbee transmission draws pulses of up to 100 mA.
+- **220 µF 16 V capacitor** (electrolytic, so it has polarity: the long leg / the side
+  without the stripe is plus) sits at the BMS. Zigbee transmission and the step-up module
+  itself draw current in pulses, and the capacitor smooths them so the voltage doesn't sag.
 - **Its own switch**: the keyboard can't be physically turned off (its switch only changes
   the USB/2.4G/BT mode), so the ESP is powered down separately.
 
-Turn the switch off when flashing over USB. Feed the `3V3` pin only with the output of the
-DSN-MINI-360 set to 3.3 V beforehand: 4.2 V will kill the chip.
+Turn the switch off when flashing over USB, otherwise 5 V from USB and 5 V from the
+step-up module meet on the same pin. Don't feed anything into the `3V3` pin from outside:
+5 V or 4.2 V from the battery will kill the chip.
 
 ### Battery measurement
 
@@ -348,10 +374,22 @@ second row, SETTINGS). These lines make it easy to check that your hands land in
 
 ## Power consumption
 
-| Mode | Current | 4000 mAh lasts |
-|---|---|---|
-| `USE_LIGHT_SLEEP 0`, always awake | ~30 mA | ~5 days |
-| `USE_LIGHT_SLEEP 1`, sleep between key presses | a few mA on average | weeks |
+| Mode | ESP current (3.3 V) | Battery current | 4000 mAh lasts |
+|---|---|---|---|
+| `USE_LIGHT_SLEEP 0`, always awake (default) | ~30 mA | ~60 mA | ~2.5–3 days |
+| `USE_LIGHT_SLEEP 1`, sleep between key presses | a few mA on average | ~12–15 mA | ~10–12 days |
+
+These are **estimates, not measurements**. The battery gives noticeably more than the ESP
+itself eats, because of the "step-up → AMS1117" chain:
+
+- the step-up module loses ~15 % (its efficiency is ~85 %);
+- the AMS1117 is a linear regulator: the extra 1.7 V (5 → 3.3 V) just heats it up, and
+  it draws ~5 mA on its own even with no load (quiescent current);
+- the power LEDs on the ESP board and on the step-up module add a couple more mA.
+
+While sleeping the ESP eats almost nothing, so most of the current goes to these constant
+losses. Desoldering the LEDs makes sleep last longer. The keyboard itself (with its
+backlight) also runs from the same battery, so real-world time will be shorter.
 
 The keyboard scans the matrix **only when something is pressed**; at rest the lines are
 silent. That's why sleep works: the ESP wakes on a low level on a scan line.

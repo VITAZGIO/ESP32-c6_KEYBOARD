@@ -19,3 +19,10 @@ secrets.ini
 # Система
 .DS_Store
 Thumbs.db
+
+# ESP-IDF
+sdkconfig
+sdkconfig.*
+!sdkconfig.defaults
+managed_components/
+dependencies.lock
