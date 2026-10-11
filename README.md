@@ -1,22 +1,21 @@
 <div align="right">
 
-🌐 [English](README.en.md) · **Русский**
+🌐 **English** · [Русский](README.ru.md)
 
 </div>
 
-> 🇬🇧 **This page is in Russian.** An English version is available: **[README.en.md](README.en.md)**.
-
 <div align="center">
 
-# ⌨️ AULA F75 → Zigbee-кнопки
+# ⌨️ AULA F75 → Zigbee buttons
 
-### Обычная клавиатура, которая умеет управлять умным домом
+### A regular keyboard that can control your smart home
 
 ![Zigbee](https://img.shields.io/badge/Zigbee-End%20Device-blue)
-![MCU](https://img.shields.io/badge/MCU-ESP32--C6-red)
+![MCU](https://img.shields.io/badge/MCU-ESP32--C6%20SuperMini-red)
 ![Zigbee2MQTT](https://img.shields.io/badge/Zigbee2MQTT-supported-green)
-![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino-orange)
-![OTA](https://img.shields.io/badge/OTA-update-lightgrey)
+![ESP-IDF](https://img.shields.io/badge/ESP--IDF-5.4-orange)
+![Sleep](https://img.shields.io/badge/sleep-%3C1%20mA-brightgreen)
+![OTA](https://img.shields.io/badge/OTA-Wi--Fi-lightgrey)
 
 <img src="Photo/Keyboard.png" alt="AULA F75" width="900">
 
@@ -24,317 +23,311 @@
 
 ---
 
-## 👋 Что это такое
+## 👋 What is this
 
-Это проект, в котором я встроил маленькую плату **ESP32-C6**
-(микроконтроллер с радиомодулем Zigbee) внутрь механической клавиатуры **AULA F75**.
+A tiny **ESP32-C6 SuperMini** board (a microcontroller with a Zigbee radio) built inside
+an **AULA F75** mechanical keyboard.
 
-Результат: клавиши **End + 1…6** превратились в **12 беспроводных кнопок** для умного дома.
-Нажал сочетание — в Home Assistant сработала автоматизация: свет, розетка, сцена, что угодно.
+The keys **End + 1…6** become **12 wireless buttons** for Home Assistant. Press a combo
+and an automation fires: lights, a socket, the kettle, a scene, anything.
 
-Главное:
+- 🖥️ **No PC needed.** The board works on its own, even when the computer is off.
+- 🔌 **Works in every keyboard mode:** wired, 2.4G and Bluetooth.
+- 🧠 **Doesn't break the keyboard.** The board only listens to the key matrix and never drives it. End stays a normal key.
+- 🔋 **Runs from the keyboard's own Li-Po** (4000 mAh). Under **1 mA** while asleep.
+- ⚡ **Instant.** Wakes up in fractions of a millisecond, even a quick tap is caught.
+- 📡 Shows up in **Zigbee2MQTT** as **VITAZGIO / AulaKeys**.
+- 🔄 **Over-the-air updates (OTA)** via Wi-Fi, no need to open the keyboard.
 
-- 🖥️ **ПК не нужен.** Плата работает сама, даже когда компьютер выключен.
-- 🔌 **Работает в любом режиме клавиатуры:** по проводу, 2.4G и Bluetooth.
-- 🧠 **Клавиатуру не ломает.** Плата только «слушает» нажатия и ничего не отправляет в её схему.
-- 🔋 **Питание от родного аккумулятора** клавиатуры (Li-Po 4000 мА·ч).
-- 📡 **Видна в Zigbee2MQTT** как устройство **VITAZGIO / AulaKeys**.
-- 🔄 **Прошивка по воздуху (OTA)** — обновлять код можно без разборки клавиатуры.
-
-> 💡 **Zigbee** — низкопотребляющий беспроводной протокол для умного дома.
-> **Zigbee2MQTT** — программа, которая подключает такие устройства к Home Assistant без
-> фирменных хабов. **End Device** — устройство, которое только отправляет свои данные
-> и не ретранслирует чужие (экономит батарею).
+> 💡 **Zigbee** is a low-power wireless protocol for smart homes. **Zigbee2MQTT** connects
+> such devices to Home Assistant without vendor hubs. **End Device** is a device that only
+> sends its own data and does not relay others' traffic, so it can sleep and save battery.
 
 ---
 
-## 🧰 Что понадобится
+## 🧰 What you need
 
-| Что | Зачем |
+| What | Why |
 |---|---|
-| Клавиатура AULA F75 (плата `SI-2635-916-3632-V02`) | сама клавиатура |
-| ESP32-C6 (я использую nanoESP32-C6) | мозг проекта и Zigbee-радио |
-| Повышающий модуль с фиксированным выходом 5/8/9/12 В (5 В — без перемычек) + конденсатор 220 мкФ 16 В | 5 В для ESP от аккумулятора |
-| BMS 1S (защита аккумулятора) | чтобы не посадить Li-Po в ноль |
-| Тумблер | отдельное выключение ESP |
-| Тонкие провода, 6 резисторов 10 кОм | подключение к матрице клавиш |
-| Zigbee-координатор + Zigbee2MQTT | приём кнопок |
+| AULA F75 keyboard (board `SI-2635-916-3632-V02`) | the keyboard itself |
+| **ESP32-C6 SuperMini** (4 MB flash, `B+`/`B−` battery pads) | the brain and the Zigbee radio |
+| 1S BMS (battery protection board, DW01A + 8205A) | keeps the Li-Po from being drained to zero |
+| Electrolytic capacitor ~220 µF 16 V | smooths current spikes when the radio transmits |
+| 8 × 10 kΩ resistors + 2 × 20 kΩ | matrix taps + battery divider |
+| Thin wires, kapton/electrical tape | wiring and insulation |
+| Zigbee coordinator + Zigbee2MQTT | receiving the buttons |
 
-Паяльник и аккуратность — обязательны 🙂
+A soldering iron and patience are mandatory 🙂
 
 ---
 
-## 🔧 Как выглядит внутри
+## 🔧 Inside
 
-Плата клавиатуры в разборе. Тонкие провода идут от точек матрицы к ESP32-C6.
+The whole keyboard board with the ESP32-C6 SuperMini on tape. Yellow wires go to the
+digit keys, white/blue to End, the battery comes in from the bottom.
 
 <div align="center">
-<img src="Photo/image.png" alt="Плата клавиатуры в разборе" width="900">
+<img src="Photo/keyboard_inside.jpg" alt="Keyboard board with the ESP32-C6 SuperMini" width="500">
 </div>
 
-ESP32-C6 уже в корпусе: рядом повышайка (справа сверху), BMS с конденсатором (по центру)
-и аккумулятор.
+Close-up of the board. All wires go to the edge pins, the series resistors sit right
+at the matrix points.
 
 <div align="center">
-<img src="Photo/esp_in_case.jpg" alt="ESP32-C6 в корпусе клавиатуры" width="900">
+<img src="Photo/supermini_wired.jpg" alt="ESP32-C6 SuperMini wired" width="900">
 </div>
 
-Распайка до установки в корпус — сверху и снизу платы.
+Battery protection board (BMS) with the capacitor. Its `P+`/`P−` output feeds the
+`B+`/`B−` pads of the SuperMini.
 
 <div align="center">
-<img src="Photo/esp_wiring_top.jpg" alt="Распайка ESP32-C6, вид сверху" width="900">
-<br>
-<img src="Photo/esp_wiring_bottom.jpg" alt="Распайка ESP32-C6, вид снизу" width="400">
+<img src="Photo/bms_wiring.jpg" alt="BMS and capacitor" width="900">
+</div>
+
+The ESP32-C6 SuperMini itself, top and bottom. The `B+`/`B−` pads on the bottom are the
+battery input.
+
+<div align="center">
+<img src="Photo/supermini_top.jpg" alt="ESP32-C6 SuperMini top" width="440">
+<img src="Photo/supermini_bottom.jpg" alt="ESP32-C6 SuperMini bottom" width="440">
 </div>
 
 ---
 
-## 🧭 Содержание
+## 🧭 Contents
 
-[Как это работает](#как-это-работает) ·
-[Сочетания клавиш](#сочетания-клавиш) ·
-[Распиновка](#распиновка) ·
-[Питание](#-питание) ·
-[Прошивка](#прошивка-по-usb-первый-раз) ·
-[Zigbee2MQTT](#подключение-к-zigbee2mqtt) ·
-[Диагностика](#диагностика)
-
----
-
-## Как это работает
-
-Если по-простому: в клавиатуре клавиши соединены **матрицей** (сеткой из строк и столбцов).
-Родной контроллер клавиатуры по очереди подаёт сигнал на строки и смотрит, в каком
-столбце он появился — так узнаёт, какая клавиша нажата.
-
-ESP32 в этом процессе не участвует, он **подслушивает**: ловит прерывание
-(мгновенный сигнал процессору) по спаду на сканирующей линии и в этот момент
-читает состояние линий чтения. Совпало — клавиша физически нажата.
-
-Поэтому детекция работает **во всех режимах** клавиатуры (провод, 2.4G, BT)
-и не зависит от того, что решила отправить её родная прошивка.
+[How it works](#how-it-works) ·
+[Key combos](#key-combos) ·
+[Pinout](#pinout) ·
+[Power](#-power) ·
+[Flashing](#flashing-over-usb-first-time) ·
+[OTA](#over-the-air-update) ·
+[Zigbee2MQTT](#zigbee2mqtt) ·
+[Troubleshooting](#troubleshooting)
 
 ---
 
-## Сочетания клавиш
+## How it works
 
-Всё решает то, что было с End **до** рабочего зажатия. Цифры везде срабатывают
-мгновенно, без задержек.
+Keyboard keys are wired as a **matrix** (a grid of rows and columns). The keyboard's own
+controller pulses one **scan line** at a time and checks which **read line** goes low.
+That's how it knows which key is pressed.
 
-| Что сделал с End до | Потом зажал End + цифра | Результат |
+The ESP doesn't take part in this, it **eavesdrops**: on every falling edge of a scan
+line it takes an interrupt (an instant signal to the CPU) and reads the read lines at
+that moment. Two scans in a row with the line low means the key is really pressed.
+
+**Sleep.** When nothing is pressed, the keyboard stops scanning and the matrix is
+silent. The ESP sits in **light sleep** (CPU stopped, memory kept, wakes in under a
+millisecond) and waits for End's read line to go low. Any key in End's row wakes it up,
+then the ESP checks End's own scan line to make sure it really was End.
+
+**Radio.** The board is a sleepy Zigbee End Device. It stays awake for 10 s after joining,
+then turns the receiver off and only checks in with the coordinator every 3 s. Button
+reports go straight to the coordinator.
+
+Because of this it works in **every** keyboard mode (wired, 2.4G, BT) and doesn't depend
+on what the keyboard's firmware decides to send.
+
+---
+
+## Key combos
+
+What you did with End **before** the working press decides the mode. Digits always fire
+instantly.
+
+| What you did with End before | Then hold End + digit | Result |
 |---|---|---|
-| ничего | цифра 1…6 | `Btn 1`…`Btn 6` |
-| тапнул коротко (меньше 0.6 с) и отпустил | цифра 1…6 | `Btn 1 dbl`…`Btn 6 dbl` |
-| подержал 2 секунды и отпустил | нажать End и **одну** из цифр **1, 2, 3** | сброс сети Zigbee |
-| подержал 2 секунды и отпустил | нажать End и **одну** из цифр **4, 5, 6** | режим OTA (Wi-Fi, 3 минуты) |
+| nothing | digit 1…6 | `Btn 1`…`Btn 6` |
+| short tap (under 0.6 s), released | digit 1…6 | `Btn 1 dbl`…`Btn 6 dbl` |
+| held 2 s, released | End + any of **1, 2, 3** | Zigbee network reset |
+| held 2 s, released | End + any of **4, 5, 6** | OTA mode (Wi-Fi, 10 min) |
 
-**Флаг взводится в момент отпускания End** и живёт **3 секунды** — успеваешь
-спокойно переложить пальцы. Флаг одноразовый: использовал — сбросился.
+The flag is set **when End is released** and lives for **3 seconds**. It's one-shot: use
+it once and it's gone. If you pressed digits while holding End, that was normal work and
+no flag is set.
 
-Если во время удержания End ты нажимал цифры, это была обычная работа —
-флаг не взводится, что бы ты потом ни делал.
-
-В сервисном режиме кнопки в сеть не шлются вообще. Держать ничего не нужно:
-хватает **обычного нажатия одной цифры** (1, 2 или 3 — сброс, 4, 5 или 6 — OTA).
+In service mode nothing is sent to the network. A **single digit press** is enough.
 
 ---
 
-## Распиновка
+## Pinout
 
-| GPIO | Что | Через |
+All pins are on the board edges. Every matrix line goes through a **10 kΩ series resistor**.
+
+| GPIO | What | Via |
 |---|---|---|
-| GPIO4 | End — линия чтения | 10к послед. |
-| GPIO5 | End — сканирующая линия | 10к послед. |
-| GPIO6 | Цифровой ряд — сканирующая (общая) | 10к послед. |
-| GPIO7 | Цифра 1 — линия чтения | 10к послед. |
-| GPIO10 | Цифра 2 — линия чтения | 10к послед. |
-| GPIO21 | Цифра 3 — линия чтения | 10к послед. |
-| GPIO20 | Цифра 4 — линия чтения | 10к послед. |
-| GPIO19 | Цифра 5 — линия чтения | 10к послед. |
-| GPIO18 | Цифра 6 — линия чтения | 10к послед. |
-| GPIO1 | Замер напряжения аккумулятора | делитель 20к/20к |
-| GND | пятак `GND` из ISP-шестёрки у U1 | напрямую |
+| GPIO6 | End: read line (switch leg) | 10k series |
+| GPIO7 | End: scan line (diode side) | 10k series |
+| GPIO4 | Digit row: scan line (common, diode side) | 10k series |
+| GPIO19 | Digit 1: read line | 10k series |
+| GPIO2 | Digit 2: read line | 10k series |
+| GPIO5 | Digit 3: read line | 10k series |
+| GPIO20 | Digit 4: read line | 10k series |
+| GPIO18 | Digit 5: read line | 10k series |
+| GPIO14 | Digit 6: read line | 10k series |
+| GPIO1 | Battery voltage | 20k/20k divider |
+| `B+` / `B−` | Battery after the BMS | directly |
 
-**Только последовательный резистор, без резистора на землю.** Делитель на землю
-подгружает матрицу — клавиатура начинает видеть залипшие клавиши.
+Don't use: GPIO8 (RGB LED), GPIO9 (BOOT), GPIO15 (LED), GPIO12/13 (USB), GPIO16/17 (UART).
 
-### Точки на плате клавиатуры (SI-2635-916-3632-V02)
+**Series resistor only, no resistor to ground and no pull-ups.** Anything to ground or
+3.3 V loads the matrix and the keyboard starts seeing stuck keys.
 
-- **линия чтения** — одиночная (общая, анодная) нога сдвоенного диода `A3` рядом с клавишей
-- **сканирующая линия** — контакт хотсвап-гнезда, который НЕ идёт на диод
-- **GND** — пятак `GND` из шестёрки `VDD TCK TDI TMS TDO GND` возле U1
+### Points on the keyboard board (SI-2635-916-3632-V02)
 
-Диоды `A3` — сдвоенные, с общим анодом. Один корпус обслуживает две соседние
-клавиши. Компоненты `J3Y` — транзисторы подсветки, к матрице отношения не имеют.
+- **read line**: the switch socket pad that does NOT go to the diode
+- **scan line**: the diode side. The small three-legged parts marked `A3` are dual
+  diodes (they look like transistors). One package serves two neighbouring keys.
+- `J3Y` parts are backlight transistors, not part of the matrix.
 
----
-
-## ⚡ Питание
-
-На плате клавиатуры **нет стабилизатора 3.3 В** — логика питается прямо от
-аккумулятора, на линиях матрицы 4.2 В. Аккумулятор LTZK 606090, Li-Po 3.7 В, 4000 мА·ч.
-
-```
-Аккум (−) ──[BMS 1S: B− вход, P− выход]──┐
-Аккум (+) ──────────────────────────────┬┴── клавиатура
-                                        │
-                              [тумблер]─┴──[повышайка IN+/IN−]
-                                             OUT+ ── пин 5V платы C6
-                                             OUT− ── GND платы C6
-              конденсатор 220 мкФ 16 В у BMS, на питании перед повышайкой
-```
-
-- **Повышайка** — импульсный повышающий модуль (boost-преобразователь: поднимает
-  напряжение выше входного, тоже с высоким КПД). Выход у неё **фиксированный** —
-  5 / 8 / 9 / 12 В, выбирается перемычками `A` и `B` по табличке на обороте платы
-  (перемычка — две площадки рядом, которые замыкают каплей припоя). Нужно **5 В** —
-  это режим по умолчанию: **перемычки A и B не трогаем, обе разомкнуты**. Перед
-  установкой всё равно проверь выход мультиметром!
-- 5 В идут на пин `5V` платы, дальше встроенный стабилизатор **AMS1117** сам делает
-  3.3 В для чипа. Напрямую от Li-Po он не работает — ему нужно минимум ~4.5 В на входе,
-  поэтому напряжение аккумулятора (3.0–4.2 В) сначала поднимается до 5 В.
-- **Что не заработало:** линейный стабилизатор HT7333 (3.3 В сразу на пин `3V3`) и
-  модуль с подстроечным резистором («крутилкой», где выход выставляется вручную).
-  С фиксированной повышайкой всё завелось.
-- **BMS 1S** (DW01A + 8205A) — защита от переразряда, ставится **в разрыв минусового
-  провода** между аккумулятором и платой. На клавиатуре стоит только зарядник XT4097.
-- **Конденсатор 220 мкФ 16 В** (электролитический — у него есть полярность, длинная
-  нога / сторона без полоски — плюс) стоит у BMS. Zigbee-передача и сама повышайка
-  берут ток импульсами — конденсатор их сглаживает, чтобы напряжение не проседало.
-- **Свой тумблер** — клавиатура физически не выключается (переключатель только
-  меняет режим USB/2.4G/BT), так что ESP гасится отдельно.
-
-При прошивке по USB тумблер выключить — иначе 5 В от USB и 5 В от повышайки встретятся
-на одном пине. На пин `3V3` ничего снаружи не подавать: 5 В или 4.2 В от аккумулятора
-убьют чип.
-
-### Замер батареи
-
-```
-Аккум (+) после BMS ──[20к]──┬── GPIO1
-                             │
-                           [20к]
-                             │
-                            GND
-```
-
-Делитель пополам: 4.2 В → 2.1 В. Если процент врёт — подстрой `BAT_MIN_MV` /
-`BAT_MAX_MV` в коде.
+If End doesn't wake the board (`пробуждений 0` in the log), swap `PIN_END` and `PIN_END_SCAN`
+in `src/config.h`.
 
 ---
 
-## Антенна
+## ⚡ Power
 
-Верхняя плита клавиатуры металлическая. Плату класть к пластиковому низу,
-антенной к краю корпуса, подальше от плиты, от аккумулятора и от антенны
-`ANT2` самой клавиатуры (меандр в правом нижнем углу платы).
+```
+Li-Po (+) ─────────────────────────┬── keyboard (as from the factory)
+Li-Po (−) ─────────────────────────┤
+                                   │
+                    [BMS 1S]  B+/B− in, P+/P− out
+                         P+ ──┬────── B+  (ESP32-C6 SuperMini, bottom pad)
+                              ═ 220 µF
+                         P− ──┴────── B−
+
+B+ ──[20k]──┬── GPIO1
+            └─[20k]── GND
+```
+
+- The SuperMini has its **own Li-Po input** (`B+`/`B−`) with a charger and a low-dropout
+  regulator. **No boost converter is needed**, the battery goes straight in.
+- The **BMS** (battery protection board) cuts the ESP off when the battery is nearly
+  empty, so it never drains the Li-Po to zero.
+- The **capacitor** (electrolytic, mind the polarity: stripe = minus) supplies the short
+  current spikes when the radio transmits.
+- **USB and battery together are fine** on this board. But while USB is plugged in, the
+  board's charger also charges the keyboard battery, so don't leave it like that for long.
+- Never feed anything into the `3V3` pin, and leave the `5V` pin unconnected.
+
+### Measured current
+
+| State | Current from battery |
+|---|---|
+| Sending a button (~2 s) | ~24 mA |
+| Asleep, connected to Zigbee | **under 1 mA** (below the 1 mA resolution of my multimeter) |
+
+At this rate the ESP is a drop in the bucket next to the keyboard itself.
+
+### Battery level
+
+The divider halves the voltage: 4.2 V → 2.1 V. Reported to Zigbee on join and every
+6 hours. If the percentage looks wrong, adjust `BAT_MIN_MV` / `BAT_MAX_MV` in `config.h`.
 
 ---
 
-## Прошивка по USB (первый раз)
+## Antenna
 
-Плата с двумя USB-C. Прошивать через разъём **CH343** (обычный USB-UART мост),
-не через нативный `ESP32C6`.
+The keyboard's top plate is metal. Put the board near the plastic bottom, antenna (the
+red ceramic chip) towards the edge of the case, away from the plate, the battery and the
+keyboard's own `ANT2` antenna.
 
-Перед первой сборкой:
+---
+
+## Flashing over USB (first time)
+
+The firmware is written in **ESP-IDF 5.4** (Espressif's native framework) and built with
+**PlatformIO** (`framework = espidf`).
+
+Before the first build:
 
 ```
-src/secrets.example.h  →  src/secrets.h     (Wi-Fi и пароль OTA)
-secrets.example.ini    →  secrets.ini       (IP платы для заливки по воздуху)
+src/secrets.example.h  →  src/secrets.h     (Wi-Fi and OTA password)
+secrets.example.ini    →  secrets.ini       (board IP and OTA password for uploading)
 ```
 
-Оба файла в `.gitignore`, в репозиторий не попадают.
+Both are in `.gitignore` and never reach the repository.
+
+1. Use a **real data cable** (USB-A → USB-C is safest) plugged into a **rear USB port**
+   of the PC, not a hub. A bad cable gives "device descriptor request failed".
+2. Enter download mode: **hold BOOT → plug in USB (or press RST) → release BOOT**.
+3. Upload:
 
 ```
-pio run -e esp32-c6
 pio run -e esp32-c6 -t upload
+pio device monitor -p COMxx
 ```
 
-В VS Code: иконка PlatformIO слева → Project Tasks → **esp32-c6** → Upload.
+No external USB-UART adapter is needed, the SuperMini has native USB.
 
-Если сыпется `qio_mode: Failed to set QIE bit` и вечный ребут — в `platformio.ini`
-уже стоит `board_build.flash_mode = dio`, но после правки нужен **Clean**.
+> ⚠️ Keep the project in a plain folder like `C:\pio\aula-keys`: no Cyrillic, no spaces,
+> not inside Nextcloud/OneDrive. Sync tools lock files and the build fails with
+> `PermissionError ... .sconsign`.
 
-### Стереть флеш (смена сети Zigbee)
-
-```
-& "$env:USERPROFILE\.platformio\penv\Scripts\python.exe" `
-  "$env:USERPROFILE\.platformio\packages\tool-esptoolpy\esptool.py" `
-  --chip esp32c6 --port COM6 erase_flash
-```
+After changing `sdkconfig.defaults` or `ota.csv`, delete `sdkconfig.esp32-c6*` and `.pio/`.
 
 ---
 
-## Прошивка по воздуху (клавиатуру разбирать не нужно)
+## Over-the-air update
 
-1. На клавиатуре: **подержать End 2 секунды → отпустить → нажать End и любую одну из цифр 4, 5, 6**
-2. ESP перезагружается, поднимает Wi-Fi, ждёт прошивку **3 минуты**
-3. Найти его IP в роутере (хост `aulakeys`) или по `ping aulakeys.local`
-4. Вписать IP в `secrets.ini`
-5. Залить:
+1. On the keyboard: **hold End 2 s → release → End + any of 4, 5, 6**
+2. The ESP reboots into Wi-Fi with a **static IP `192.168.1.210`** and waits **10 minutes**.
+   Check it at `http://192.168.1.210/`.
+3. Upload:
 
 ```
 pio run -e esp32-c6-ota -t upload
 ```
 
-В VS Code: Project Tasks → **esp32-c6-ota** → Upload.
+The IP lives in `src/config.h` (`OTA_IP`, `OTA_GATEWAY`) and `secrets.ini`
+(`upload_port`). The password is `OTA_PASSWORD` in `secrets.h` and `password` in
+`secrets.ini`; they must match.
 
-Пароль OTA задаётся в `secrets.h` (`OTA_PASSWORD`).
-
-Не успел за 3 минуты или Wi-Fi не поднялся — ESP сам вернётся в Zigbee-режим,
-аккорд можно повторить.
-
-Разметка флеша `ota.csv` держит **два раздела под программу** (`ota_0` / `ota_1`) —
-без этого прошивка по воздуху невозможна в принципе.
+The flash layout `ota.csv` keeps two app slots (`ota_0` / `ota_1`) on the 4 MB flash.
+If the new firmware crashes on boot, the bootloader rolls back to the previous one.
 
 ---
 
-## Подключение к Zigbee2MQTT
+## Zigbee2MQTT
 
-1. `zigbee2mqtt/aulakeys.js` → в папку z2m, рядом с `configuration.yaml`
-2. В `configuration.yaml`:
+1. Copy `zigbee2mqtt/aulakeys.js` next to z2m's `configuration.yaml`
+2. In `configuration.yaml`:
 
 ```yaml
 external_converters:
   - aulakeys.js
 ```
 
-3. Перезапустить z2m
-4. Permit Join в z2m
-5. Плата после `erase_flash` сама сделает join → **VITAZGIO / AulaKeys**
+3. Restart z2m
+4. **Permit Join on the coordinator only** (not via routers: through some routers the
+   sleepy device loses its parent)
+5. The board joins as **VITAZGIO / AulaKeys**
 
-### Сущности
+A new board means a new address, so it shows up as a new device. Delete the old one and
+give the new one the same name, and your Home Assistant entities stay the same.
 
-| Сущность | Комбинация |
+### Entities
+
+| Entity | Combo |
 |---|---|
-| `Btn 1`…`Btn 6` | зажал End + цифра |
-| `Btn 1 dbl`…`Btn 6 dbl` | тап End, затем зажал End + цифра |
-| `battery` | процент заряда, heartbeat раз в 5 мин |
-| `linkquality` | считает координатор, z2m показывает сам |
+| `Btn 1`…`Btn 6` | hold End + digit |
+| `Btn 1 dbl`…`Btn 6 dbl` | tap End, then hold End + digit |
+| `battery` | charge %, on join and every 6 h |
 
-Каждая кнопка — импульс: `ON` на 300 мс, потом `OFF`. В HA вешаешь автоматизацию
-на переход в `ON`.
-
-Эндпоинты сделаны на кластере `msOccupancySensing` (датчик присутствия) — самый
-простой бинарный кластер, есть во всех версиях arduino-esp32.
-
-### Проверка связи
-
-Устройство не знает свой `linkquality` — его считает координатор. Поэтому раз
-в 5 минут уходит heartbeat: обновляются `battery`, `linkquality` и `last_seen`,
-даже если кнопки не трогали. Состояние связи пишется в Serial.
+Each button is a pulse: `ON` for 300 ms, then `OFF` (plus two more `OFF` repeats in case a
+packet is lost). In HA, trigger your automation on the change to `ON`.
 
 ---
 
-## Глушилка на ПК (AutoHotkey v2)
+## AutoHotkey for the PC
 
-Чтобы End и комбинации ничего не делали в Windows. В автозагрузку
-(`Win+R` → `shell:startup`):
+End stays a normal key, so to keep End + digits from typing in Windows, put this in
+autostart (`Win+R` → `shell:startup`):
 
 ```
 #Requires AutoHotkey v2.0
 
-End::return
 End & 1::return
 End & 2::return
 End & 3::return
@@ -343,98 +336,71 @@ End & 5::return
 End & 6::return
 ```
 
-Одиночные цифры продолжают печататься как обычно. Когда ПК выключен — скрипт
-не нужен, ESP работает сам по себе.
+Single digits keep typing as usual. With the PC off the script isn't needed.
 
 ---
 
-## Настройки в коде
+## Settings in code (`src/config.h`)
 
-| Константа | Смысл |
+| Constant | Meaning |
 |---|---|
-| `TAP_MAX_MS` | короче этого End = заявка на второй ряд (600) |
-| `SERVICE_HOLD_MS` | дольше этого End = заявка на настройки (2000) |
-| `ALT_WINDOW_MS` | сколько живёт флаг второго ряда (3000) |
-| `SERVICE_WINDOW_MS` | сколько живёт флаг настроек (3000) |
-| `CHORD_MIN_KEYS` | сколько цифр из группы хватает для сервисной команды (1) |
-| `DEBOUNCE_CYCLES` | подтверждений для цифр (2 × 30 мс) |
-| `END_DEBOUNCE` | подтверждений для End (1 — иначе теряется быстрый тап) |
-| `PULSE_MS` | длительность импульса кнопки (300 мс) |
-| `HEARTBEAT_MS` | период отчёта в сеть (5 мин) |
-| `OTA_TIMEOUT_MS` | сколько ждать прошивку в режиме OTA (3 мин) |
-| `USE_LIGHT_SLEEP` | сон между нажатиями — включать после отладки |
+| `TAP_MAX_MS` | End shorter than this = second-row request (600) |
+| `SERVICE_HOLD_MS` | End longer than this = service request (2000) |
+| `ALT_WINDOW_MS` / `SERVICE_WINDOW_MS` | how long the flag lives (3000) |
+| `END_PRESS_SCANS` / `DIGIT_PRESS_SCANS` | scans in a row to accept a press (2) |
+| `SCAN_SILENCE_MS` | no scans this long = everything released (40) |
+| `PULSE_MS` | button pulse length (300) |
+| `OFF_RETRIES` / `OFF_RETRY_MS` | extra `OFF` packets (2 × 900 ms) |
+| `BAT_REPORT_MS` | battery report period (6 h) |
+| `OTA_TIMEOUT_MS` | how long OTA mode waits (10 min) |
+| `TEST_NO_ZIGBEE` | 1 = don't start Zigbee (current test), normally 0 |
 
-Если тап срабатывает через раз — подними `TAP_MAX_MS`. Если второй ряд включается
-случайно при быстрой работе — опусти `ALT_WINDOW_MS`.
-
-В Serial видно, какой режим определился: `[MODE] тап -> жду второй ряд`,
-`[MODE] удержание -> жду настройки`, `[MODE] второй ряд`, `[MODE] НАСТРОЙКИ`.
-По этим строкам удобно проверять, что руки попадают в нужный режим.
+`DEBUG_PM` in `main.c` prints sleep statistics every 30 s (`пробуждений N, нажатий End M` = wakes / End presses). Log messages are in Russian.
 
 ---
 
-## Энергопотребление
+## Troubleshooting
 
-| Режим | Ток ESP (3.3 В) | Ток из аккумулятора | 4000 мА·ч хватит на |
-|---|---|---|---|
-| `USE_LIGHT_SLEEP 0`, всегда бодр (по умолчанию) | ~30 мА | ~60 мА | ~2.5–3 дня |
-| `USE_LIGHT_SLEEP 1`, сон между нажатиями | единицы мА в среднем | ~12–15 мА | ~10–12 дней |
-
-Это **оценка расчётом, не замер**. Из аккумулятора уходит заметно больше, чем ест сам
-ESP, из-за цепочки «повышайка → AMS1117»:
-
-- повышайка теряет ~15 % (КПД — коэффициент полезного действия, ~85 %);
-- AMS1117 — линейный стабилизатор: лишние 1.7 В (5 → 3.3 В) просто греют его, плюс
-  он сам по себе ест ~5 мА даже без нагрузки (ток покоя);
-- светодиоды питания на плате ESP и на повышайке — ещё пара мА.
-
-Во сне ESP почти ничего не ест, и основную часть тока съедают как раз эти постоянные
-потери. Если отпаять светодиоды, сон протянет дольше. Плюс от того же аккумулятора
-работает сама клавиатура (с подсветкой), так что реальное время будет меньше.
-
-Клавиатура сканирует матрицу **только когда что-то нажато** — в покое на линиях
-тишина. Поэтому сон работает: ESP просыпается по низкому уровню на сканирующей линии.
-
----
-
-## Диагностика
-
-| Симптом | Причина / лечение |
+| Symptom | Cause / fix |
 |---|---|
-| Срабатывают все кнопки разом | читается не тот фронт. Прерывание `FALLING`, активный уровень LOW |
-| Второй ряд срабатывает как первый | быстрый тап не успевает зарегистрироваться. Нужны `POLL_MS 30` и `END_DEBOUNCE 1` |
-| Клавиатура сама «зажимает» ряд | на линии висит резистор на землю → убрать, оставить только последовательный |
-| В мониторе тишина при нажатии | попал на линию подсветки, а не матрицы |
-| Мультиметр показывает 25–30 кОм между линиями | это защитные диоды самого ESP, не связь на плате. Мерить только при отключённом ESP |
-| Клава сходит с ума, когда ESP обесточен | фантомное запитывание через ESD-диоды. Порядок: GND → питание ESP → сигналы |
-| Кнопка залипла в `ON` в z2m | потерян пакет `OFF`. Прошивка шлёт повторы и убирает залипшие раз в 30 с |
-| `qio_mode: Failed to set QIE bit`, ребут-луп | `board_build.flash_mode = dio` + Clean |
-| В z2m не появляется | не стёрт флеш → `erase_flash`, потом Permit Join |
-| Кнопки `N/A` в z2m | не отработала привязка в `configure` конвертера, смотри лог z2m |
-| `ZigbeeBinary does not name a type` | старая версия arduino-esp32. Код на `ZigbeeOccupancySensor`, он есть везде |
-| `Pin is not configured as analog channel` | перед `analogSetPinAttenuation` нужен холостой `analogRead` |
+| "Device descriptor request failed" | bad cable or front-panel/hub port. Data cable, rear port |
+| `Write timeout` / `No serial data` on upload | board not in download mode: hold BOOT, press RST, release BOOT |
+| `PermissionError ... .sconsign` | project inside Nextcloud/OneDrive, move it to a plain folder |
+| End does nothing, `пробуждений 0` | `PIN_END` / `PIN_END_SCAN` swapped |
+| Sleep current tens of mA | `PM_POWER_DOWN_PERIPHERAL_IN_LIGHT_SLEEP` or `ESP_SLEEP_POWER_DOWN_FLASH` turned on. On C6 they make the chip wake ~300 times a second. Keep both off |
+| Radio dead after the first sleep | `CONFIG_ESP_PHY_MAC_BB_PD=y` is required |
+| Keyboard sees stuck keys | resistor to ground/pull-up on a matrix line, keep series only |
+| Not appearing in z2m | flash not erased, use the service combo (End 2 s → End + 1) or `erase_flash`, then Permit Join |
+| Status `0x09` / device unavailable | joined through a router: re-pair with Permit Join on the coordinator |
+| Board reboots when measuring current through a resistor | radio spikes ~100 mA. Use ≤10 Ω plus a big capacitor, or 1 Ω |
 
 ---
 
-## Файлы проекта
+## Project files
 
 ```
-ESP32-c6_AULA_KEYBOARD/
-├── platformio.ini            конфиг сборки, два окружения
-├── ota.csv                   разметка флеша с двумя разделами под OTA
-├── secrets.example.ini       шаблон → secrets.ini (IP для OTA)
-├── .gitignore
-├── README.md                 документация (русский)
-├── README.en.md              документация (английский)
+ESP32-c6_KEYBOARD/
+├── platformio.ini            build config, two environments (USB / OTA)
+├── sdkconfig.defaults        ESP-IDF settings (Zigbee, sleep, console)
+├── ota.csv                   4 MB flash layout with two OTA slots
+├── CMakeLists.txt
+├── secrets.example.ini       template → secrets.ini
+├── README.md                 docs (English)
+├── README.ru.md              docs (Russian)
 ├── src/
-│   ├── main.cpp              прошивка
-│   └── secrets.example.h     шаблон → secrets.h (Wi-Fi, пароль OTA)
+│   ├── config.h              all pins and timings
+│   ├── main.c                matrix, modes, sleep
+│   ├── zb.c / zb.h           Zigbee
+│   ├── ota.c / ota.h         Wi-Fi OTA
+│   ├── battery.c / .h        battery measurement
+│   ├── idf_component.yml     esp-zigbee-lib dependency
+│   └── secrets.example.h     template → secrets.h
 └── zigbee2mqtt/
-    └── aulakeys.js           внешний конвертер для z2m
+    └── aulakeys.js           external converter for z2m
 ```
 
-Не попадают в git: `src/secrets.h`, `secrets.ini`, `.pio/`, бинарники.
+Not in git: `src/secrets.h`, `secrets.ini`, `.pio/`, `sdkconfig.*`, `managed_components/`.
 
 ---
 
-**Проект:** AULA F75 Zigbee Keys · Zigbee End Device · VITAZGIO
+**Project:** AULA F75 Zigbee Keys · Zigbee End Device · VITAZGIO
