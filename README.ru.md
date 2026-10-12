@@ -1,6 +1,6 @@
 <div align="right">
 
-🌐 [English](https://github.com/VITAZGIO/ESP32-c6_KEYBOARD/blob/main/README.md) · **Русский**
+🌐 [English](README.md) · **Русский**
 
 </div>
 
