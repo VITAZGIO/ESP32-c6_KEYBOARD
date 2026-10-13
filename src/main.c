@@ -111,6 +111,9 @@ static SemaphoreHandle_t s_wake;   // будит главную задачу: En
 static volatile uint8_t s_end_low_run, s_end_high_run;
 static volatile bool s_end_matrix;                // End зажат (по сканам)
 static volatile uint32_t s_last_end_scan_ms;      // последний скан столбца End
+static volatile uint32_t s_scan_count;            // сканов End за текущее пробуждение (для лога)
+static uint32_t s_wake_at;                        // когда проснулись
+static uint32_t s_end_found_at;                   // когда нашли End (0 — не нашли)
 
 static void IRAM_ATTR end_scan_isr(void *arg)
 {
@@ -126,6 +129,7 @@ static void IRAM_ATTR end_scan_isr(void *arg)
         if (s_end_high_run >= END_RELEASE_SCANS) s_end_matrix = false;
     }
     s_last_end_scan_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    s_scan_count++;
     portEXIT_CRITICAL_ISR(&s_mux);
 }
 
@@ -147,7 +151,9 @@ static bool end_raw(void)
 static bool matrix_busy(void)
 {
     uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-    return (int32_t)(now - s_last_end_scan_ms) <= SCAN_SILENCE_MS;
+    // после пробуждения ждём WAKE_GRACE_MS: клава сама просыпается не сразу
+    return (int32_t)(now - s_last_end_scan_ms) <= SCAN_SILENCE_MS
+        || (int32_t)(now - s_wake_at) < WAKE_GRACE_MS;
 }
 
 // после пробуждения: даём клаве время начать сканировать
@@ -157,7 +163,10 @@ static void end_watch_start(void)
     s_last_end_scan_ms = (uint32_t)(esp_timer_get_time() / 1000);
     s_end_low_run = s_end_high_run = 0;
     s_end_matrix = false;
+    s_scan_count = 0;
     portEXIT_CRITICAL(&s_mux);
+    s_wake_at = (uint32_t)(esp_timer_get_time() / 1000);
+    s_end_found_at = 0;
     gpio_intr_enable(PIN_END_SCAN);
 }
 
@@ -191,6 +200,8 @@ static bool s_combo[N_DIGITS];
 
 typedef struct {
     uint32_t off_at;      // когда слать OFF после импульса (0 — не надо)
+    uint8_t on_retries;   // сколько ещё повторных ON (первый пакет после сна бывает теряется)
+    uint32_t on_retry_at;
     uint8_t retries;      // сколько ещё повторных OFF
     uint32_t retry_at;
     uint32_t last_fire;
@@ -213,9 +224,15 @@ static void fire(int idx, bool alt)
     if (now - b->last_fire < REFIRE_MS) return;
     b->last_fire = now;
     zb_set_button(idx, alt, true);
-    b->off_at = now + PULSE_MS;
+    uint32_t sent = now_ms();
+    // OFF считаем от момента, когда ON реально ушёл в стек: если стек спал и
+    // держал блокировку, ON и OFF иначе уйдут разом и ON потеряется
+    b->off_at = sent + PULSE_MS;
+    b->on_retries = ON_RETRIES;
+    b->on_retry_at = sent + ON_RETRY_MS;
     b->retries = 0;
-    ESP_LOGI(TAG, ">>> Btn %d%s", idx + 1, alt ? " dbl" : "");
+    ESP_LOGI(TAG, ">>> Btn %d%s | от пробуждения %lu мс, стек ждали %lu мс", idx + 1, alt ? " dbl" : "",
+             (unsigned long)(now - s_wake_at), (unsigned long)(sent - now));
 }
 
 // возвращает true, если ещё есть что отправлять
@@ -225,7 +242,16 @@ static bool pulses_service(uint32_t now)
     for (int a = 0; a < 2; a++) {
         for (int i = 0; i < N_DIGITS; i++) {
             btn_t *b = &s_btn[a][i];
+            // повтор ON: если первый пакет потерялся, сработает повтор. Если дошёл —
+            // состояние уже ON, повтор ничего не меняет и автоматизация не срабатывает дважды
+            if (b->off_at && b->on_retries && (int32_t)(now - b->on_retry_at) >= 0
+                && (int32_t)(b->off_at - now) > 0) {
+                zb_set_button(i, a, true);
+                b->on_retries--;
+                b->on_retry_at = now + ON_RETRY_MS;
+            }
             if (b->off_at && (int32_t)(now - b->off_at) >= 0) {
+                b->on_retries = 0;
                 zb_set_button(i, a, false);
                 b->off_at = 0;
                 b->retries = OFF_RETRIES;
@@ -254,6 +280,7 @@ static void end_pressed(uint32_t now)
     s_end_down = true;
     s_end_down_at = now;
     s_end_presses++;
+    if (!s_end_found_at) s_end_found_at = now;
     s_session_used = false;
     digits_clear();
     gpio_intr_enable(PIN_SCAN);   // слушаем матрицу только пока End зажат
@@ -391,6 +418,11 @@ static void keys_task(void *arg)
         }
 
         while (step()) vTaskDelay(pdMS_TO_TICKS(END_POLL_MS));
+        if (s_end_found_at)
+            ESP_LOGI(TAG, "сессия: сканов %lu, End найден через %lu мс после пробуждения",
+                     (unsigned long)s_scan_count, (unsigned long)(s_end_found_at - s_wake_at));
+        else if (s_scan_count)
+            ESP_LOGI(TAG, "сессия: сканов %lu, End не нажат (соседняя клавиша)", (unsigned long)s_scan_count);
 
         if (now_ms() - last_bat >= BAT_REPORT_MS) {
             report_battery();
@@ -576,7 +608,7 @@ void app_main(void)
         ota_run();   // не возвращается
     }
 
-    ESP_LOGI(TAG, "старт, ESP-IDF, light sleep");
+    ESP_LOGI(TAG, "старт, ESP-IDF, light sleep, причина перезагрузки %d", (int)esp_reset_reason());
 
     s_wake = xSemaphoreCreateBinary();
     gpio_setup();

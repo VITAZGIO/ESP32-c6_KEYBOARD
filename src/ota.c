@@ -118,6 +118,9 @@ static bool wifi_up(void)
     esp_wifi_set_config(WIFI_IF_STA, &wcfg);
     esp_wifi_set_ps(WIFI_PS_NONE);
     esp_wifi_start();
+    // от батареи пиковый ток Wi-Fi на полной мощности (~20 дБм) просаживает питание
+    // и чип сбрасывается посреди заливки. 11 дБм на комнату хватает с запасом
+    esp_wifi_set_max_tx_power(44);   // единицы 0.25 дБм
 
     ESP_LOGI(TAG, "подключаюсь к %s", WIFI_SSID);
     EventBits_t b = xEventGroupWaitBits(s_ev, BIT_GOT_IP | BIT_FAILED, pdFALSE, pdFALSE, pdMS_TO_TICKS(30000));
@@ -153,7 +156,7 @@ static esp_err_t update_post(httpd_req_t *req)
 
     const esp_partition_t *part = esp_ota_get_next_update_partition(NULL);
     esp_ota_handle_t h;
-    if (!part || esp_ota_begin(part, OTA_SIZE_UNKNOWN, &h) != ESP_OK) {
+    if (!part || esp_ota_begin(part, OTA_WITH_SEQUENTIAL_WRITES, &h) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "ota begin failed");
         return ESP_FAIL;
     }
@@ -198,6 +201,8 @@ static esp_err_t update_post(httpd_req_t *req)
 void ota_run(void)
 {
     ESP_LOGW(TAG, "=== РЕЖИМ ПРОШИВКИ ПО ВОЗДУХУ ===");
+    // OTA_WITH_SEQUENTIAL_WRITES: флеш стирается по ходу записи, а не весь раздел
+    // сразу (иначе 2 МБ стираются ~10 с, приём стоит и соединение рвётся)
     set_flag(0);   // снимаем сразу: если что-то сломается, следующий старт обычный
 
     if (!wifi_up()) {
