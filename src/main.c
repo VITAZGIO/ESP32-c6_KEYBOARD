@@ -217,6 +217,42 @@ void app_on_zb_joined(void)
     xSemaphoreGive(s_wake);
 }
 
+// ============================================================
+// Вибромотор: 1 бзз — первый ряд, 2 бзз — второй ряд, длинный — настройки
+// ============================================================
+// Не блокирует: шаги отрабатываются в step(). Пока мотор крутится, чип не спит.
+
+static uint16_t s_vib_steps[6];   // чётные — вкл, нечётные — пауза, мс
+static uint8_t s_vib_n, s_vib_i;
+static uint32_t s_vib_at;
+
+static void vibro(int count, uint16_t on_ms)
+{
+#if VIBRO_ENABLE
+    if (count > 3) count = 3;
+    s_vib_n = 0;
+    for (int k = 0; k < count; k++) {
+        s_vib_steps[s_vib_n++] = on_ms;
+        if (k < count - 1) s_vib_steps[s_vib_n++] = VIBRO_GAP_MS;
+    }
+    s_vib_i = 0;
+    s_vib_at = now_ms();
+    gpio_set_level(PIN_VIBRO, 1);
+#endif
+}
+
+// true — мотор ещё работает
+static bool vibro_service(uint32_t now)
+{
+    if (s_vib_i >= s_vib_n) return false;
+    if ((int32_t)(now - s_vib_at) < s_vib_steps[s_vib_i]) return true;
+    s_vib_at = now;
+    s_vib_i++;
+    if (s_vib_i >= s_vib_n) { gpio_set_level(PIN_VIBRO, 0); return false; }
+    gpio_set_level(PIN_VIBRO, (s_vib_i & 1) ? 0 : 1);
+    return true;
+}
+
 static void fire(int idx, bool alt)
 {
     btn_t *b = &s_btn[alt][idx];
@@ -285,9 +321,9 @@ static void end_pressed(uint32_t now)
     digits_clear();
     gpio_intr_enable(PIN_SCAN);   // слушаем матрицу только пока End зажат
 
-    if (s_pending == PEND_DBL)          { s_mode = MODE_DBL;     ESP_LOGI(TAG, "[MODE] второй ряд"); }
-    else if (s_pending == PEND_SERVICE) { s_mode = MODE_SERVICE; ESP_LOGI(TAG, "[MODE] НАСТРОЙКИ"); }
-    else                                  s_mode = MODE_BASE;
+    if (s_pending == PEND_DBL)          { s_mode = MODE_DBL;     ESP_LOGI(TAG, "[MODE] второй ряд"); vibro(2, VIBRO_ON_MS); }
+    else if (s_pending == PEND_SERVICE) { s_mode = MODE_SERVICE; ESP_LOGI(TAG, "[MODE] НАСТРОЙКИ"); vibro(1, VIBRO_LONG_MS); }
+    else                                { s_mode = MODE_BASE;    vibro(1, VIBRO_ON_MS); }
     s_pending = PEND_NONE;
 }
 
@@ -380,11 +416,12 @@ static bool step(void)
     }
 
     bool sending = pulses_service(now);
+    bool buzzing = vibro_service(now);
 
     // бодрствуем, пока End зажат или отпущен недавно (идёт проверка дребезга),
     // пока открыто окно режима, пока не ушли все OFF и пока клава сканирует
     return s_end_down || s_end_low_samples || s_pending != PEND_NONE || sending
-           || matrix_busy();
+           || buzzing || matrix_busy();
 }
 
 // ============================================================
@@ -558,6 +595,18 @@ static void pm_debug_task(void *arg)
 
 static void gpio_setup(void)
 {
+    // вибромотор: выход, по умолчанию выключен; подтяжка вниз держит транзистор
+    // закрытым при старте и в сне
+    gpio_config_t vib_cfg = {
+        .pin_bit_mask = 1ULL << PIN_VIBRO,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&vib_cfg);
+    gpio_set_level(PIN_VIBRO, 0);
+
     // линия чтения ряда End: только вход, без подтяжек (тянет сама клава),
     // будит из light sleep низким уровнем
     gpio_config_t end_cfg = {
