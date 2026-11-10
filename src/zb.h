@@ -20,3 +20,7 @@ void zb_factory_reset(void);
 // Вызывается из Zigbee-задачи, когда плата подключилась к сети.
 // Определена в main.c.
 void app_on_zb_joined(void);
+
+// Вызывается из Zigbee-задачи, когда стек сообщил, что пакет с эндпоинта не ушёл.
+// Определена в main.c.
+void app_on_zb_send_failed(uint8_t ep);

@@ -5,17 +5,19 @@
  * Плата спит и остаётся в сети. End будит её мгновенно, пока End зажат —
  * читаем цифры с матрицы клавиатуры. Отпустил, всё отправлено — спит.
  *
- * Три режима — всё решает то, что было с End ДО рабочего зажатия.
- * Цифры везде срабатывают мгновенно.
+ * Два ряда кнопок и настройки. Цифры везде срабатывают мгновенно.
  *
- *   просто зажал End + цифра 1..6                 -> Btn 1..6
- *   тап End (коротко), отпустил, зажал + цифра    -> Btn 1..6 dbl
- *   держал End 2 с, отпустил, нажал End + цифру   -> сервисный режим:
+ *   End + цифра 1..6                         -> Btn 1..6 (ряд 1) или Btn 1..6 dbl (ряд 2)
+ *   тап End (коротко, без цифр)              -> переключить ряд: 1 -> 2 -> 1 ...
+ *                                               вибро: один тик — ряд 1, два — ряд 2
+ *   5 с без тапов и кнопок                   -> снова ряд 1
+ *   держал End 2 с (вибро), отпустил, в течение 1.5 с снова держал 2 с (двойное вибро),
+ *   отпустил, в течение 5 с End + цифра      -> настройки:
  *       любая из цифр 1,2,3    -> сброс сети Zigbee
  *       любая из цифр 4,5,6    -> режим OTA (Wi-Fi, прошивка по воздуху)
  *
- * Флаг взводится в момент ОТПУСКАНИЯ End и живёт 3 секунды. Если во время
- * удержания нажимались цифры — это была обычная работа, флаг не взводится.
+ * Если во время удержания End нажимались цифры — это обычная работа:
+ * ни ряд, ни настройки не трогаются.
  *
  * VITAZGIO / AulaKeys
  */
@@ -39,6 +41,7 @@
 #include "battery.h"
 #include "zb.h"
 #include "ota.h"
+#include "haptic.h"
 
 static const char *TAG = "AULA";
 
@@ -50,31 +53,38 @@ static inline uint32_t now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1
 // Матрица: прерывание на сканирующей линии цифр
 // ============================================================
 // На каждый скан (спад линии PIN_SCAN) смотрим линии чтения.
-// Цифра нажата, когда DIGIT_PRESS_SCANS сканов подряд её линия в нуле.
+// Цифра нажата, когда её линия в нуле на нескольких сканах за короткое окно.
 
-static volatile uint8_t s_low_run[N_DIGITS];
-static volatile uint8_t s_high_run[N_DIGITS];
+// Нажатие — DIGIT_PRESS_LOWS нулей в коротком окне (не обязательно подряд),
+// отпускание — нулей нет DIGIT_RELEASE_MS. Почему несимметрично — см. config.h.
+
+static volatile uint8_t s_low_cnt[N_DIGITS];
+static volatile uint32_t s_first_low_ms[N_DIGITS], s_last_low_ms[N_DIGITS];
 static volatile uint8_t s_digit_down;             // бит i = цифра i зажата
 static volatile uint32_t s_last_scan_ms;
+static volatile uint32_t s_dbg_scans, s_dbg_lows[N_DIGITS];   // попадания в скан (для лога)
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 
 static void IRAM_ATTR scan_isr(void *arg)
 {
     uint32_t in = REG_READ(GPIO_IN_REG);
+    uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
     portENTER_CRITICAL_ISR(&s_mux);
+    s_dbg_scans++;
     for (int i = 0; i < N_DIGITS; i++) {
-        bool low = !(in & (1UL << DIGIT_PINS[i]));
-        if (low) {
-            s_high_run[i] = 0;
-            if (s_low_run[i] < 255) s_low_run[i]++;
-            if (s_low_run[i] >= DIGIT_PRESS_SCANS) s_digit_down |= (1 << i);
-        } else {
-            s_low_run[i] = 0;
-            if (s_high_run[i] < 255) s_high_run[i]++;
-            if (s_high_run[i] >= DIGIT_RELEASE_SCANS) s_digit_down &= ~(1 << i);
+        if (in & (1UL << DIGIT_PINS[i])) continue;      // единица ничего не доказывает
+        s_dbg_lows[i]++;
+        s_last_low_ms[i] = now;
+        if (s_digit_down & (1 << i)) continue;
+        if (s_low_cnt[i] == 0 || (int32_t)(now - s_first_low_ms[i]) > DIGIT_PRESS_WIN_MS) {
+            s_low_cnt[i] = 1;
+            s_first_low_ms[i] = now;
+        } else if (s_low_cnt[i] < 255) {
+            s_low_cnt[i]++;
         }
+        if (s_low_cnt[i] >= DIGIT_PRESS_LOWS) s_digit_down |= (1 << i);
     }
-    s_last_scan_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    s_last_scan_ms = now;
     portEXIT_CRITICAL_ISR(&s_mux);
 }
 
@@ -82,10 +92,17 @@ static uint8_t digits_read(void)
 {
     portENTER_CRITICAL(&s_mux);
     uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-    // клава перестала сканировать — значит, ничего не зажато
     if (s_digit_down && (int32_t)(now - s_last_scan_ms) > SCAN_SILENCE_MS) {
+        // клава перестала сканировать — значит, ничего не зажато
         s_digit_down = 0;
-        memset((void *)s_low_run, 0, sizeof(s_low_run));
+        memset((void *)s_low_cnt, 0, sizeof(s_low_cnt));
+    } else {
+        for (int i = 0; i < N_DIGITS; i++) {
+            if ((s_digit_down & (1 << i)) && (int32_t)(now - s_last_low_ms[i]) > DIGIT_RELEASE_MS) {
+                s_digit_down &= ~(1 << i);
+                s_low_cnt[i] = 0;
+            }
+        }
     }
     uint8_t d = s_digit_down;
     portEXIT_CRITICAL(&s_mux);
@@ -96,8 +113,9 @@ static void digits_clear(void)
 {
     portENTER_CRITICAL(&s_mux);
     s_digit_down = 0;
-    memset((void *)s_low_run, 0, sizeof(s_low_run));
-    memset((void *)s_high_run, 0, sizeof(s_high_run));
+    memset((void *)s_low_cnt, 0, sizeof(s_low_cnt));
+    s_dbg_scans = 0;
+    memset((void *)s_dbg_lows, 0, sizeof(s_dbg_lows));
     portEXIT_CRITICAL(&s_mux);
 }
 
@@ -108,7 +126,8 @@ static void digits_clear(void)
 static SemaphoreHandle_t s_wake;   // будит главную задачу: End, сеть, таймер
 
 // --- End по матрице: прерывание на скане столбца End
-static volatile uint8_t s_end_low_run, s_end_high_run;
+static volatile uint8_t s_end_low_cnt;
+static volatile uint32_t s_end_first_low_ms, s_end_last_low_ms;
 static volatile bool s_end_matrix;                // End зажат (по сканам)
 static volatile uint32_t s_last_end_scan_ms;      // последний скан столбца End
 static volatile uint32_t s_scan_count;            // сканов End за текущее пробуждение (для лога)
@@ -118,29 +137,34 @@ static uint32_t s_end_found_at;                   // когда нашли End (
 static void IRAM_ATTR end_scan_isr(void *arg)
 {
     bool low = !(REG_READ(GPIO_IN_REG) & (1UL << PIN_END));
+    uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
     portENTER_CRITICAL_ISR(&s_mux);
-    if (low) {
-        s_end_high_run = 0;
-        if (s_end_low_run < 255) s_end_low_run++;
-        if (s_end_low_run >= END_PRESS_SCANS) s_end_matrix = true;
-    } else {
-        s_end_low_run = 0;
-        if (s_end_high_run < 255) s_end_high_run++;
-        if (s_end_high_run >= END_RELEASE_SCANS) s_end_matrix = false;
+    if (low) {      // единица ничего не доказывает (опоздавшее прерывание), считаем только нули
+        s_end_last_low_ms = now;
+        if (!s_end_matrix) {
+            if (s_end_low_cnt == 0 || (int32_t)(now - s_end_first_low_ms) > END_PRESS_WIN_MS) {
+                s_end_low_cnt = 1;
+                s_end_first_low_ms = now;
+            } else if (s_end_low_cnt < 255) {
+                s_end_low_cnt++;
+            }
+            if (s_end_low_cnt >= END_PRESS_LOWS) s_end_matrix = true;
+        }
     }
-    s_last_end_scan_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    s_last_end_scan_ms = now;
     s_scan_count++;
     portEXIT_CRITICAL_ISR(&s_mux);
 }
 
-// End зажат? Сканов нет дольше SCAN_SILENCE_MS — клава уснула, значит отпущен.
+// End зажат? Нулей нет дольше END_HOLD_MS или сканов нет дольше SCAN_SILENCE_MS — отпущен.
 static bool end_raw(void)
 {
     portENTER_CRITICAL(&s_mux);
     uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-    if ((int32_t)(now - s_last_end_scan_ms) > SCAN_SILENCE_MS) {
+    if ((int32_t)(now - s_last_end_scan_ms) > SCAN_SILENCE_MS
+        || (s_end_matrix && (int32_t)(now - s_end_last_low_ms) > END_HOLD_MS)) {
         s_end_matrix = false;
-        s_end_low_run = 0;
+        s_end_low_cnt = 0;
     }
     bool d = s_end_matrix;
     portEXIT_CRITICAL(&s_mux);
@@ -161,7 +185,7 @@ static void end_watch_start(void)
 {
     portENTER_CRITICAL(&s_mux);
     s_last_end_scan_ms = (uint32_t)(esp_timer_get_time() / 1000);
-    s_end_low_run = s_end_high_run = 0;
+    s_end_low_cnt = 0;
     s_end_matrix = false;
     s_scan_count = 0;
     portEXIT_CRITICAL(&s_mux);
@@ -183,12 +207,14 @@ static void IRAM_ATTR end_isr(void *arg)
 // Логика режимов и кнопок
 // ============================================================
 
-typedef enum { PEND_NONE, PEND_DBL, PEND_SERVICE } pending_t;
 typedef enum { MODE_BASE, MODE_DBL, MODE_SERVICE } keys_mode_t;
 
-static pending_t s_pending = PEND_NONE;
-static uint32_t s_pending_at;
-static keys_mode_t s_mode = MODE_BASE;
+static keys_mode_t s_mode = MODE_BASE;   // режим текущего зажатия End
+static uint8_t s_row = 0;                // выбранный ряд: 0 — первый, 1 — второй
+static uint32_t s_last_act;              // последний тап или кнопка — от него ROW_TIMEOUT_MS
+static uint8_t s_svc_stage = 0;          // 0 — нет, 1 — было одно долгое, 2 — два долгих (настройки взведены)
+static uint32_t s_svc_at;                // когда отпустили последнее долгое
+static bool s_long_buzzed;               // за это зажатие уже вибрировали «2 с прошло»
 
 static bool s_end_down = false;
 static uint8_t s_end_low_samples = 0;
@@ -205,6 +231,7 @@ typedef struct {
     uint8_t retries;      // сколько ещё повторных OFF
     uint32_t retry_at;
     uint32_t last_fire;
+    volatile uint8_t fail_budget;   // сколько ещё раз стек может сказать «не ушло», прежде чем сдаёмся
 } btn_t;
 static btn_t s_btn[2][N_DIGITS];   // [0] — Btn, [1] — Btn dbl
 
@@ -217,40 +244,19 @@ void app_on_zb_joined(void)
     xSemaphoreGive(s_wake);
 }
 
-// ============================================================
-// Вибромотор: 1 бзз — первый ряд, 2 бзз — второй ряд, длинный — настройки
-// ============================================================
-// Не блокирует: шаги отрабатываются в step(). Пока мотор крутится, чип не спит.
-
-static uint16_t s_vib_steps[6];   // чётные — вкл, нечётные — пауза, мс
-static uint8_t s_vib_n, s_vib_i;
-static uint32_t s_vib_at;
-
-static void vibro(int count, uint16_t on_ms)
+// Из Zigbee-задачи: стек сообщил, что пакет по этому эндпоинту не ушёл.
+// Не ждём планового повтора — повторяем сразу, но не бесконечно.
+void app_on_zb_send_failed(uint8_t ep)
 {
-#if VIBRO_ENABLE
-    if (count > 3) count = 3;
-    s_vib_n = 0;
-    for (int k = 0; k < count; k++) {
-        s_vib_steps[s_vib_n++] = on_ms;
-        if (k < count - 1) s_vib_steps[s_vib_n++] = VIBRO_GAP_MS;
-    }
-    s_vib_i = 0;
-    s_vib_at = now_ms();
-    gpio_set_level(PIN_VIBRO, 1);
-#endif
-}
-
-// true — мотор ещё работает
-static bool vibro_service(uint32_t now)
-{
-    if (s_vib_i >= s_vib_n) return false;
-    if ((int32_t)(now - s_vib_at) < s_vib_steps[s_vib_i]) return true;
-    s_vib_at = now;
-    s_vib_i++;
-    if (s_vib_i >= s_vib_n) { gpio_set_level(PIN_VIBRO, 0); return false; }
-    gpio_set_level(PIN_VIBRO, (s_vib_i & 1) ? 0 : 1);
-    return true;
+    int a = ep >= EP_ALT_FIRST ? 1 : 0;
+    int i = ep - (a ? EP_ALT_FIRST : EP_BASE_FIRST);
+    if (i < 0 || i >= N_DIGITS) return;
+    btn_t *b = &s_btn[a][i];
+    if (!b->fail_budget) return;
+    if (--b->fail_budget == 0) { haptic_play(HAP_FAIL); return; }   // сдались — сказать вибрацией
+    uint32_t now = now_ms();
+    if (b->off_at) { if (!b->on_retries) b->on_retries = 1; b->on_retry_at = now; }
+    else           { if (!b->retries) b->retries = 1;       b->retry_at = now; }
 }
 
 static void fire(int idx, bool alt)
@@ -259,6 +265,9 @@ static void fire(int idx, bool alt)
     uint32_t now = now_ms();
     if (now - b->last_fire < REFIRE_MS) return;
     b->last_fire = now;
+    s_last_act = now;     // ряд держится ROW_TIMEOUT_MS от последней кнопки
+    b->fail_budget = 4;
+    haptic_play(zb_joined() ? HAP_FIRE : HAP_FAIL);   // сразу: «плата тебя поняла»
     zb_set_button(idx, alt, true);
     uint32_t sent = now_ms();
     // OFF считаем от момента, когда ON реально ушёл в стек: если стек спал и
@@ -311,6 +320,16 @@ static void report_battery(void)
     ESP_LOGI(TAG, "батарея %lu мВ, %u %%", (unsigned long)mv, pct);
 }
 
+// выбранный ряд с учётом таймаута: 5 с без действий — снова первый
+static uint8_t row_now(uint32_t now)
+{
+    if (s_row && (int32_t)(now - s_last_act) >= ROW_TIMEOUT_MS) {
+        s_row = 0;
+        ESP_LOGI(TAG, "[MODE] 5 с без нажатий -> ряд 1");
+    }
+    return s_row;
+}
+
 static void end_pressed(uint32_t now)
 {
     s_end_down = true;
@@ -321,10 +340,21 @@ static void end_pressed(uint32_t now)
     digits_clear();
     gpio_intr_enable(PIN_SCAN);   // слушаем матрицу только пока End зажат
 
-    if (s_pending == PEND_DBL)          { s_mode = MODE_DBL;     ESP_LOGI(TAG, "[MODE] второй ряд"); vibro(2, VIBRO_ON_MS); }
-    else if (s_pending == PEND_SERVICE) { s_mode = MODE_SERVICE; ESP_LOGI(TAG, "[MODE] НАСТРОЙКИ"); vibro(1, VIBRO_LONG_MS); }
-    else                                { s_mode = MODE_BASE;    vibro(1, VIBRO_ON_MS); }
-    s_pending = PEND_NONE;
+    s_long_buzzed = false;
+
+    // второе долгое должно начаться не позже SERVICE_GAP_MS после первого
+    if (s_svc_stage == 1 && (int32_t)(now - s_svc_at) > SERVICE_GAP_MS) s_svc_stage = 0;
+
+    if (s_svc_stage == 2) {
+        s_svc_stage = 0;
+        if ((int32_t)(now - s_svc_at) <= SERVICE_WINDOW_MS) {
+            s_mode = MODE_SERVICE;
+            ESP_LOGI(TAG, "[MODE] НАСТРОЙКИ");
+            return;
+        }
+    }
+    s_mode = row_now(now) ? MODE_DBL : MODE_BASE;
+    ESP_LOGI(TAG, "[MODE] ряд %d", s_mode == MODE_DBL ? 2 : 1);
 }
 
 static void end_released(uint32_t released_at)
@@ -333,18 +363,28 @@ static void end_released(uint32_t released_at)
     gpio_intr_disable(PIN_SCAN);  // линия скана в покое может «шуметь» и будить чип
     uint32_t held = released_at - s_end_down_at;
 
-    if (s_session_used) {
-        s_pending = PEND_NONE;
-    } else if (held < TAP_MAX_MS) {
-        s_pending = PEND_DBL;
-        s_pending_at = released_at;
-        ESP_LOGI(TAG, "[MODE] тап -> жду второй ряд");
+    // сколько сканов клавы мы реально «увидели» у зажатой цифры (для диагностики потерь)
+    ESP_LOGI(TAG, "сессия End: держали %lu мс, сканов %lu, нулей по цифрам %lu/%lu/%lu/%lu/%lu/%lu",
+             (unsigned long)held, (unsigned long)s_dbg_scans,
+             (unsigned long)s_dbg_lows[0], (unsigned long)s_dbg_lows[1], (unsigned long)s_dbg_lows[2],
+             (unsigned long)s_dbg_lows[3], (unsigned long)s_dbg_lows[4], (unsigned long)s_dbg_lows[5]);
+
+    if (s_mode == MODE_SERVICE || s_session_used) {
+        // настройки без цифры — выход; жали цифры — обычная работа
+        s_svc_stage = 0;
+    } else if (held >= TAP_MIN_MS && held < TAP_MAX_MS) {
+        s_svc_stage = 0;
+        s_row = !row_now(s_end_down_at);
+        s_last_act = released_at;
+        haptic_play(s_row ? HAP_ROW2 : HAP_ROW1);
+        ESP_LOGI(TAG, "[MODE] тап -> ряд %d", s_row + 1);
     } else if (held >= SERVICE_HOLD_MS) {
-        s_pending = PEND_SERVICE;
-        s_pending_at = released_at;
-        ESP_LOGI(TAG, "[MODE] удержание -> жду настройки");
+        s_svc_stage = (s_svc_stage == 1) ? 2 : 1;
+        s_svc_at = released_at;
+        ESP_LOGI(TAG, "[MODE] долгое %d из 2%s", s_svc_stage,
+                 s_svc_stage == 2 ? " -> жду End + цифру для настроек" : "");
     } else {
-        s_pending = PEND_NONE;
+        s_svc_stage = 0;   // слишком коротко для тапа или средне — ничего не делаем
     }
     s_mode = MODE_BASE;
     for (int i = 0; i < N_DIGITS; i++) s_combo[i] = false;
@@ -375,13 +415,11 @@ static bool step(void)
         }
     }
 
-    // ---- окно флага закрылось
-    if (!s_end_down && s_pending != PEND_NONE) {
-        uint32_t win = (s_pending == PEND_DBL) ? ALT_WINDOW_MS : SERVICE_WINDOW_MS;
-        if (now - s_pending_at >= win) {
-            s_pending = PEND_NONE;
-            ESP_LOGI(TAG, "[MODE] окно закрылось");
-        }
+    // ---- End держат 2 с без цифр: вибро «можно отпускать» (одно — первое долгое, два — второе)
+    if (s_end_down && !s_session_used && s_mode != MODE_SERVICE && !s_long_buzzed
+        && now - s_end_down_at >= SERVICE_HOLD_MS) {
+        s_long_buzzed = true;
+        haptic_play(s_svc_stage == 1 ? HAP_SVC2 : HAP_SVC1);
     }
 
     // ---- цифры
@@ -393,11 +431,14 @@ static bool step(void)
         if (low && !high) {
             s_session_used = true;
             ESP_LOGW(TAG, "аккорд: сброс сети Zigbee");
-            vTaskDelay(pdMS_TO_TICKS(300));
+            haptic_play(HAP_CHORD);
+            vTaskDelay(pdMS_TO_TICKS(400));
             zb_factory_reset();
         }
         if (high && !low) {
             s_session_used = true;
+            haptic_play(HAP_CHORD);
+            vTaskDelay(pdMS_TO_TICKS(400));
             ota_reboot_into();
         }
         if (d) s_session_used = true;
@@ -416,12 +457,15 @@ static bool step(void)
     }
 
     bool sending = pulses_service(now);
-    bool buzzing = vibro_service(now);
 
     // бодрствуем, пока End зажат или отпущен недавно (идёт проверка дребезга),
-    // пока открыто окно режима, пока не ушли все OFF и пока клава сканирует
-    return s_end_down || s_end_low_samples || s_pending != PEND_NONE || sending
-           || buzzing || matrix_busy();
+    // пока выбран ряд 2 или ждём второе долгое / цифру настроек (чтобы следующее
+    // нажатие ловилось без задержки на пробуждение), пока не ушли все OFF и пока клава сканирует
+    bool row_open = s_row && (int32_t)(now - s_last_act) < ROW_TIMEOUT_MS;
+    bool svc_open = s_svc_stage
+        && (int32_t)(now - s_svc_at) < (s_svc_stage == 1 ? SERVICE_GAP_MS : SERVICE_WINDOW_MS);
+    return s_end_down || s_end_low_samples || row_open || svc_open || sending
+           || matrix_busy();
 }
 
 // ============================================================
@@ -595,18 +639,6 @@ static void pm_debug_task(void *arg)
 
 static void gpio_setup(void)
 {
-    // вибромотор: выход, по умолчанию выключен; подтяжка вниз держит транзистор
-    // закрытым при старте и в сне
-    gpio_config_t vib_cfg = {
-        .pin_bit_mask = 1ULL << PIN_VIBRO,
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_ENABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&vib_cfg);
-    gpio_set_level(PIN_VIBRO, 0);
-
     // линия чтения ряда End: только вход, без подтяжек (тянет сама клава),
     // будит из light sleep низким уровнем
     gpio_config_t end_cfg = {
@@ -661,6 +693,7 @@ void app_main(void)
 
     s_wake = xSemaphoreCreateBinary();
     gpio_setup();
+    haptic_init();
     battery_init();
 
     uint32_t mv = battery_mv();

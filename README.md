@@ -133,19 +133,19 @@ on what the keyboard's firmware decides to send.
 
 ## Key combos
 
-What you did with End **before** the working press decides the mode. Digits always fire
-instantly.
+There are two rows of buttons. Digits always fire instantly.
 
-| What you did with End before | Then hold End + digit | Result |
+| Action | Result | Vibration |
 |---|---|---|
-| nothing | digit 1…6 | `Btn 1`…`Btn 6` |
-| short tap (under 0.6 s), released | digit 1…6 | `Btn 1 dbl`…`Btn 6 dbl` |
-| held 2 s, released | End + any of **1, 2, 3** | Zigbee network reset |
-| held 2 s, released | End + any of **4, 5, 6** | OTA mode (Wi-Fi, 10 min) |
+| End + digit 1…6 | `Btn 1`…`Btn 6` (row 1) or `Btn 1 dbl`…`Btn 6 dbl` (row 2) | short |
+| tap End (under 0.6 s, no digits) | toggle row: 1 → 2 → 1 … | one tick = row 1, two = row 2 |
+| 5 seconds without taps or buttons | back to row 1 | — |
+| End 2 s → release → within 1.5 s End 2 s again → release → within 5 s End + any of **1, 2, 3** | Zigbee network reset | long on each hold (second is double), then very long |
+| same, but End + any of **4, 5, 6** | OTA mode (Wi-Fi, 10 min) | same |
 
-The flag is set **when End is released** and lives for **3 seconds**. It's one-shot: use
-it once and it's gone. If you pressed digits while holding End, that was normal work and
-no flag is set.
+The selected row stays while you keep pressing buttons, so several row-2 buttons in a row
+work. If you pressed digits while holding End, that was normal work: neither row nor
+service state changes.
 
 In service mode nothing is sent to the network. A **single digit press** is enough.
 
@@ -271,7 +271,7 @@ After changing `sdkconfig.defaults` or `ota.csv`, delete `sdkconfig.esp32-c6*` a
 
 ## Over-the-air update
 
-1. On the keyboard: **hold End 2 s → release → End + any of 4, 5, 6**
+1. On the keyboard: **End 2 s → release → right away End 2 s again → release → End + any of 4, 5, 6**
 2. The ESP reboots into Wi-Fi with a **static IP `192.168.1.210`** and waits **10 minutes**.
    Check it at `http://192.168.1.210/`.
 3. Upload:
@@ -312,7 +312,7 @@ give the new one the same name, and your Home Assistant entities stay the same.
 | Entity | Combo |
 |---|---|
 | `Btn 1`…`Btn 6` | hold End + digit |
-| `Btn 1 dbl`…`Btn 6 dbl` | tap End, then hold End + digit |
+| `Btn 1 dbl`…`Btn 6 dbl` | row 2 selected by tapping End, then End + digit |
 | `battery` | charge %, on join and every 6 h |
 
 Each button is a pulse: `ON` for 300 ms, then `OFF` (plus two more `OFF` repeats in case a
@@ -344,9 +344,11 @@ Single digits keep typing as usual. With the PC off the script isn't needed.
 
 | Constant | Meaning |
 |---|---|
-| `TAP_MAX_MS` | End shorter than this = second-row request (600) |
-| `SERVICE_HOLD_MS` | End longer than this = service request (2000) |
-| `ALT_WINDOW_MS` / `SERVICE_WINDOW_MS` | how long the flag lives (3000) |
+| `TAP_MAX_MS` | End tap shorter than this toggles the row (600) |
+| `ROW_TIMEOUT_MS` | this long without presses = back to row 1 (5000) |
+| `SERVICE_HOLD_MS` | End longer than this = one "long" hold (2000) |
+| `SERVICE_GAP_MS` | start the second long hold within (1500) |
+| `SERVICE_WINDOW_MS` | after two long holds, wait for End + digit (5000) |
 | `END_PRESS_SCANS` / `DIGIT_PRESS_SCANS` | scans in a row to accept a press (2) |
 | `SCAN_SILENCE_MS` | no scans this long = everything released (40) |
 | `PULSE_MS` | button pulse length (300) |
@@ -370,7 +372,7 @@ Single digits keep typing as usual. With the PC off the script isn't needed.
 | Sleep current tens of mA | `PM_POWER_DOWN_PERIPHERAL_IN_LIGHT_SLEEP` or `ESP_SLEEP_POWER_DOWN_FLASH` turned on. On C6 they make the chip wake ~300 times a second. Keep both off |
 | Radio dead after the first sleep | `CONFIG_ESP_PHY_MAC_BB_PD=y` is required |
 | Keyboard sees stuck keys | resistor to ground/pull-up on a matrix line, keep series only |
-| Not appearing in z2m | flash not erased, use the service combo (End 2 s → End + 1) or `erase_flash`, then Permit Join |
+| Not appearing in z2m | flash not erased, use the service combo (End 2 s ×2 → End + 1) or `erase_flash`, then Permit Join |
 | Status `0x09` / device unavailable | joined through a router: re-pair with Permit Join on the coordinator |
 | Board reboots when measuring current through a resistor | radio spikes ~100 mA. Use ≤10 Ω plus a big capacitor, or 1 Ω |
 

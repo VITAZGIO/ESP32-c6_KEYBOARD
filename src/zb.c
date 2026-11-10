@@ -204,7 +204,10 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 static void send_status_cb(esp_zb_zcl_command_send_status_message_t m)
 {
     if (m.status == ESP_OK) ESP_LOGI(TAG, "  ушло: ep %u, tsn %u", m.src_endpoint, m.tsn);
-    else ESP_LOGW(TAG, "  НЕ ушло: ep %u, tsn %u, %s", m.src_endpoint, m.tsn, esp_err_to_name(m.status));
+    else {
+        ESP_LOGW(TAG, "  НЕ ушло: ep %u, tsn %u, %s", m.src_endpoint, m.tsn, esp_err_to_name(m.status));
+        app_on_zb_send_failed(m.src_endpoint);
+    }
 }
 
 // ------------------------------------------------------------
