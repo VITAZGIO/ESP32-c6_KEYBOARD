@@ -36,6 +36,7 @@ and an automation fires: lights, a socket, the kettle, a scene, anything.
 - 🧠 **Doesn't break the keyboard.** The board only listens to the key matrix and never drives it. End stays a normal key.
 - 🔋 **Runs from the keyboard's own Li-Po** (4000 mAh). Under **1 mA** while asleep.
 - ⚡ **Instant.** Wakes up in fractions of a millisecond, even a quick tap is caught.
+- 📳 **Haptic feedback.** A small motor confirms the press, the selected row and entering service mode.
 - 📡 Shows up in **Zigbee2MQTT** as **VITAZGIO / AulaKeys**.
 - 🔄 **Over-the-air updates (OTA)** via Wi-Fi, no need to open the keyboard.
 
@@ -54,6 +55,7 @@ and an automation fires: lights, a socket, the kettle, a scene, anything.
 | 1S BMS (battery protection board, DW01A + 8205A) | keeps the Li-Po from being drained to zero |
 | Electrolytic capacitor ~220 µF 16 V | smooths current spikes when the radio transmits |
 | 8 × 10 kΩ resistors + 2 × 20 kΩ | matrix taps + battery divider |
+| 3 V coin vibration motor (10×3 mm, e.g. BVM1027) + BC547 NPN transistor (or BC337, 2N2222), 1 kΩ and 100 kΩ resistors, 1N4148 diode | haptic feedback (optional) |
 | Thin wires, kapton/electrical tape | wiring and insulation |
 | Zigbee coordinator + Zigbee2MQTT | receiving the buttons |
 
@@ -122,7 +124,9 @@ That's how it knows which key is pressed.
 
 The ESP doesn't take part in this, it **eavesdrops**: on every falling edge of a scan
 line it takes an interrupt (an instant signal to the CPU) and reads the read lines at
-that moment. Two scans in a row with the line low means the key is really pressed.
+that moment. Low on a few scans within 20 ms means pressed; no low for 30 ms means
+released. The filter is asymmetric: a late interrupt can read "1" on a held key, but
+there is no false "0".
 
 **Sleep.** When nothing is pressed, the keyboard stops scanning and the matrix is
 silent. The ESP sits in **light sleep** (CPU stopped, memory kept, wakes in under a
@@ -356,7 +360,9 @@ Single digits keep typing as usual. With the PC off the script isn't needed.
 | `SERVICE_HOLD_MS` | End longer than this = one "long" hold (2000) |
 | `SERVICE_GAP_MS` | start the second long hold within (1500) |
 | `SERVICE_WINDOW_MS` | after two long holds, wait for End + digit (5000) |
-| `END_PRESS_SCANS` / `DIGIT_PRESS_SCANS` | scans in a row to accept a press (2) |
+| `END_PRESS_LOWS` / `DIGIT_PRESS_LOWS` | this many lows within 20 ms = press (2) |
+| `DIGIT_RELEASE_MS` / `END_HOLD_MS` | no low this long = released (30 / 15 ms) |
+| `PIN_HAPTIC` / `HAPTIC_ENABLED` | vibration motor pin (3) / 0 = no motor |
 | `SCAN_SILENCE_MS` | no scans this long = everything released (40) |
 | `PULSE_MS` | button pulse length (300) |
 | `OFF_RETRIES` / `OFF_RETRY_MS` | extra `OFF` packets (2 × 900 ms) |
@@ -365,6 +371,8 @@ Single digits keep typing as usual. With the PC off the script isn't needed.
 | `TEST_NO_ZIGBEE` | 1 = don't start Zigbee (current test), normally 0 |
 
 `DEBUG_PM` in `main.c` prints sleep statistics every 30 s (`пробуждений N, нажатий End M` = wakes / End presses). Log messages are in Russian.
+After every End release the log shows `сессия End: держали … мс, сканов …, нулей по цифрам …`
+(held, scans seen, lows per digit) — how many scans the board actually caught.
 
 ---
 
@@ -399,6 +407,7 @@ ESP32-c6_KEYBOARD/
 ├── src/
 │   ├── config.h              all pins and timings
 │   ├── main.c                matrix, modes, sleep
+│   ├── haptic.c / haptic.h   vibration motor patterns
 │   ├── zb.c / zb.h           Zigbee
 │   ├── ota.c / ota.h         Wi-Fi OTA
 │   ├── battery.c / .h        battery measurement
