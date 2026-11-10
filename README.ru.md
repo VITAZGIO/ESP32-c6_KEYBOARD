@@ -85,6 +85,13 @@
 <img src="Photo/bms_wiring.jpg" alt="BMS и конденсатор" width="900">
 </div>
 
+Плата клавиатуры с вибромотором: мотор и транзистор BC547 под синей изолентой,
+управление — GPIO3 (схема — в разделе «Распиновка»).
+
+<div align="center">
+<img src="Photo/keyboard_vibro.jpg" alt="Плата клавиатуры с вибромотором" width="450">
+</div>
+
 Сама ESP32-C6 SuperMini сверху и снизу. Площадки `B+`/`B−` на обороте — вход батареи.
 
 <div align="center">

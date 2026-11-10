@@ -84,6 +84,13 @@ Battery protection board (BMS) with the capacitor. Its `P+`/`P−` output feeds 
 <img src="Photo/bms_wiring.jpg" alt="BMS and capacitor" width="900">
 </div>
 
+Keyboard board with the vibration motor: motor and BC547 transistor under blue tape,
+driven by GPIO3 (wiring in the Pinout section).
+
+<div align="center">
+<img src="Photo/keyboard_vibro.jpg" alt="Keyboard board with the vibration motor" width="450">
+</div>
+
 The ESP32-C6 SuperMini itself, top and bottom. The `B+`/`B−` pads on the bottom are the
 battery input.
 
