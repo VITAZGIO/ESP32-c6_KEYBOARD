@@ -241,7 +241,9 @@ At this rate the ESP is a drop in the bucket next to the keyboard itself.
 ### Battery level
 
 The divider halves the voltage: 4.2 V → 2.1 V. Reported to Zigbee on join and every
-6 hours. If the percentage looks wrong, adjust `BAT_MIN_MV` / `BAT_MAX_MV` in `config.h`.
+6 hours. The percentage is a straight line between `BAT_MIN_MV` (3.3 V) and `BAT_MAX_MV` (4.2 V),
+which is rough: 3.8 V shows ~55 %, while for a Li-Po that's nearer half, and the keyboard's
+own bars may show more. Tune `BAT_MIN_MV` / `BAT_MAX_MV` in `config.h`.
 
 ---
 
@@ -279,11 +281,13 @@ pio device monitor -p COMxx
 
 No external USB-UART adapter is needed, the SuperMini has native USB.
 
-> ⚠️ Keep the project in a plain folder like `C:\pio\aula-keys`: no Cyrillic, no spaces,
-> not inside Nextcloud/OneDrive. Sync tools lock files and the build fails with
-> `PermissionError ... .sconsign`.
+> ⚠️ No Cyrillic or spaces in the project path. The build goes **outside the project**, to
+> `%LOCALAPPDATA%\pio-build\ESP32-c6_KEYBOARD` (`build_dir` in `platformio.ini`), so
+> Nextcloud/OneDrive don't touch it (the build used to fail with `PermissionError ... .sconsign`)
+> and the project folder doesn't grow by hundreds of MB. The first build on a new PC is a full one.
 
-After changing `sdkconfig.defaults` or `ota.csv`, delete `sdkconfig.esp32-c6*` and `.pio/`.
+After changing `sdkconfig.defaults` or `ota.csv`, delete `sdkconfig.esp32-c6*` and the build
+folder `%LOCALAPPDATA%\pio-build\ESP32-c6_KEYBOARD`.
 
 ---
 
@@ -369,6 +373,8 @@ Single digits keep typing as usual. With the PC off the script isn't needed.
 | `SERVICE_WINDOW_MS` | after two long holds, wait for End + digit (5000) |
 | `END_PRESS_SCANS` / `DIGIT_PRESS_SCANS` | scans in a row to accept a press (2) |
 | `PIN_HAPTIC` / `HAPTIC_ENABLED` | vibration motor pin (3) / 0 = no motor |
+| `HAPTIC_END_MS` / `HAPTIC_END_GAP_MS` | "End noticed" buzz and the pause between buzzes (100 / 90) |
+| `HAPTIC_FIRE_MS` | digit buzz (45) |
 | `SCAN_SILENCE_MS` | no scans this long = everything released (40) |
 | `POLL_PERIOD_MS` / `KB_CHECK_MS` | End polling while the keyboard scans / is idle (20 / 1000) |
 | `PIN_KB_ALIVE` | line that shows the keyboard is scanning (19) |
@@ -378,7 +384,9 @@ Single digits keep typing as usual. With the PC off the script isn't needed.
 | `OTA_TIMEOUT_MS` | how long OTA mode waits (10 min) |
 | `TEST_NO_ZIGBEE` | 1 = don't start Zigbee (current test), normally 0 |
 
-`DEBUG_PM` in `main.c` prints sleep statistics every 30 s (`пробуждений N, нажатий End M` = wakes / End presses). Log messages are in Russian.
+`DEBUG_PM` in `main.c` prints sleep statistics every 30 s plus
+`пробуждений N, нажатий End M (из них найдено опросом K), клава сканирует/молчит`
+(wakes, End presses, of them found by polling, keyboard scanning/idle). Log messages are in Russian.
 After every End release the log shows `сессия End: держали … мс, сканов …, нулей по цифрам …`
 (held, scans seen, lows per digit) — how many scans the board actually caught.
 
