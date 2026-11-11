@@ -53,13 +53,12 @@ static inline uint32_t now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1
 // Матрица: прерывание на сканирующей линии цифр
 // ============================================================
 // На каждый скан (спад линии PIN_SCAN) смотрим линии чтения.
-// Цифра нажата, когда её линия в нуле на нескольких сканах за короткое окно.
+// Цифра нажата, когда DIGIT_PRESS_SCANS сканов подряд её линия в нуле.
+// Счёт идёт в сканах, а не в миллисекундах: так фильтр не зависит от того,
+// как часто клава сканирует (в беспроводном режиме это бывает редко).
 
-// Нажатие — DIGIT_PRESS_LOWS нулей в коротком окне (не обязательно подряд),
-// отпускание — нулей нет DIGIT_RELEASE_MS. Почему несимметрично — см. config.h.
-
-static volatile uint8_t s_low_cnt[N_DIGITS];
-static volatile uint32_t s_first_low_ms[N_DIGITS], s_last_low_ms[N_DIGITS];
+static volatile uint8_t s_low_run[N_DIGITS];
+static volatile uint8_t s_high_run[N_DIGITS];
 static volatile uint8_t s_digit_down;             // бит i = цифра i зажата
 static volatile uint32_t s_last_scan_ms;
 static volatile uint32_t s_dbg_scans, s_dbg_lows[N_DIGITS];   // попадания в скан (для лога)
@@ -68,23 +67,22 @@ static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static void IRAM_ATTR scan_isr(void *arg)
 {
     uint32_t in = REG_READ(GPIO_IN_REG);
-    uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
     portENTER_CRITICAL_ISR(&s_mux);
     s_dbg_scans++;
     for (int i = 0; i < N_DIGITS; i++) {
-        if (in & (1UL << DIGIT_PINS[i])) continue;      // единица ничего не доказывает
-        s_dbg_lows[i]++;
-        s_last_low_ms[i] = now;
-        if (s_digit_down & (1 << i)) continue;
-        if (s_low_cnt[i] == 0 || (int32_t)(now - s_first_low_ms[i]) > DIGIT_PRESS_WIN_MS) {
-            s_low_cnt[i] = 1;
-            s_first_low_ms[i] = now;
-        } else if (s_low_cnt[i] < 255) {
-            s_low_cnt[i]++;
+        bool low = !(in & (1UL << DIGIT_PINS[i]));
+        if (low) {
+            s_dbg_lows[i]++;
+            s_high_run[i] = 0;
+            if (s_low_run[i] < 255) s_low_run[i]++;
+            if (s_low_run[i] >= DIGIT_PRESS_SCANS) s_digit_down |= (1 << i);
+        } else {
+            s_low_run[i] = 0;
+            if (s_high_run[i] < 255) s_high_run[i]++;
+            if (s_high_run[i] >= DIGIT_RELEASE_SCANS) s_digit_down &= ~(1 << i);
         }
-        if (s_low_cnt[i] >= DIGIT_PRESS_LOWS) s_digit_down |= (1 << i);
     }
-    s_last_scan_ms = now;
+    s_last_scan_ms = (uint32_t)(esp_timer_get_time() / 1000);
     portEXIT_CRITICAL_ISR(&s_mux);
 }
 
@@ -92,17 +90,10 @@ static uint8_t digits_read(void)
 {
     portENTER_CRITICAL(&s_mux);
     uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+    // клава перестала сканировать — значит, ничего не зажато
     if (s_digit_down && (int32_t)(now - s_last_scan_ms) > SCAN_SILENCE_MS) {
-        // клава перестала сканировать — значит, ничего не зажато
         s_digit_down = 0;
-        memset((void *)s_low_cnt, 0, sizeof(s_low_cnt));
-    } else {
-        for (int i = 0; i < N_DIGITS; i++) {
-            if ((s_digit_down & (1 << i)) && (int32_t)(now - s_last_low_ms[i]) > DIGIT_RELEASE_MS) {
-                s_digit_down &= ~(1 << i);
-                s_low_cnt[i] = 0;
-            }
-        }
+        memset((void *)s_low_run, 0, sizeof(s_low_run));
     }
     uint8_t d = s_digit_down;
     portEXIT_CRITICAL(&s_mux);
@@ -113,7 +104,8 @@ static void digits_clear(void)
 {
     portENTER_CRITICAL(&s_mux);
     s_digit_down = 0;
-    memset((void *)s_low_cnt, 0, sizeof(s_low_cnt));
+    memset((void *)s_low_run, 0, sizeof(s_low_run));
+    memset((void *)s_high_run, 0, sizeof(s_high_run));
     s_dbg_scans = 0;
     memset((void *)s_dbg_lows, 0, sizeof(s_dbg_lows));
     portEXIT_CRITICAL(&s_mux);
@@ -126,8 +118,7 @@ static void digits_clear(void)
 static SemaphoreHandle_t s_wake;   // будит главную задачу: End, сеть, таймер
 
 // --- End по матрице: прерывание на скане столбца End
-static volatile uint8_t s_end_low_cnt;
-static volatile uint32_t s_end_first_low_ms, s_end_last_low_ms;
+static volatile uint8_t s_end_low_run, s_end_high_run;
 static volatile bool s_end_matrix;                // End зажат (по сканам)
 static volatile uint32_t s_last_end_scan_ms;      // последний скан столбца End
 static volatile uint32_t s_scan_count;            // сканов End за текущее пробуждение (для лога)
@@ -137,34 +128,29 @@ static uint32_t s_end_found_at;                   // когда нашли End (
 static void IRAM_ATTR end_scan_isr(void *arg)
 {
     bool low = !(REG_READ(GPIO_IN_REG) & (1UL << PIN_END));
-    uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
     portENTER_CRITICAL_ISR(&s_mux);
-    if (low) {      // единица ничего не доказывает (опоздавшее прерывание), считаем только нули
-        s_end_last_low_ms = now;
-        if (!s_end_matrix) {
-            if (s_end_low_cnt == 0 || (int32_t)(now - s_end_first_low_ms) > END_PRESS_WIN_MS) {
-                s_end_low_cnt = 1;
-                s_end_first_low_ms = now;
-            } else if (s_end_low_cnt < 255) {
-                s_end_low_cnt++;
-            }
-            if (s_end_low_cnt >= END_PRESS_LOWS) s_end_matrix = true;
-        }
+    if (low) {
+        s_end_high_run = 0;
+        if (s_end_low_run < 255) s_end_low_run++;
+        if (s_end_low_run >= END_PRESS_SCANS) s_end_matrix = true;
+    } else {
+        s_end_low_run = 0;
+        if (s_end_high_run < 255) s_end_high_run++;
+        if (s_end_high_run >= END_RELEASE_SCANS) s_end_matrix = false;
     }
-    s_last_end_scan_ms = now;
+    s_last_end_scan_ms = (uint32_t)(esp_timer_get_time() / 1000);
     s_scan_count++;
     portEXIT_CRITICAL_ISR(&s_mux);
 }
 
-// End зажат? Нулей нет дольше END_HOLD_MS или сканов нет дольше SCAN_SILENCE_MS — отпущен.
+// End зажат? Сканов нет дольше SCAN_SILENCE_MS — клава уснула, значит отпущен.
 static bool end_raw(void)
 {
     portENTER_CRITICAL(&s_mux);
     uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-    if ((int32_t)(now - s_last_end_scan_ms) > SCAN_SILENCE_MS
-        || (s_end_matrix && (int32_t)(now - s_end_last_low_ms) > END_HOLD_MS)) {
+    if ((int32_t)(now - s_last_end_scan_ms) > SCAN_SILENCE_MS) {
         s_end_matrix = false;
-        s_end_low_cnt = 0;
+        s_end_low_run = 0;
     }
     bool d = s_end_matrix;
     portEXIT_CRITICAL(&s_mux);
@@ -185,7 +171,7 @@ static void end_watch_start(void)
 {
     portENTER_CRITICAL(&s_mux);
     s_last_end_scan_ms = (uint32_t)(esp_timer_get_time() / 1000);
-    s_end_low_cnt = 0;
+    s_end_low_run = s_end_high_run = 0;
     s_end_matrix = false;
     s_scan_count = 0;
     portEXIT_CRITICAL(&s_mux);

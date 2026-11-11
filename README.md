@@ -124,9 +124,9 @@ That's how it knows which key is pressed.
 
 The ESP doesn't take part in this, it **eavesdrops**: on every falling edge of a scan
 line it takes an interrupt (an instant signal to the CPU) and reads the read lines at
-that moment. Low on a few scans within 20 ms means pressed; no low for 30 ms means
-released. The filter is asymmetric: a late interrupt can read "1" on a held key, but
-there is no false "0".
+that moment. Two scans in a row with the line low means pressed, two scans high means
+released. It counts scans, not milliseconds, so it doesn't depend on how often the
+keyboard scans.
 
 **Sleep.** When nothing is pressed, the keyboard stops scanning and the matrix is
 silent. The ESP sits in **light sleep** (CPU stopped, memory kept, wakes in under a
@@ -360,8 +360,7 @@ Single digits keep typing as usual. With the PC off the script isn't needed.
 | `SERVICE_HOLD_MS` | End longer than this = one "long" hold (2000) |
 | `SERVICE_GAP_MS` | start the second long hold within (1500) |
 | `SERVICE_WINDOW_MS` | after two long holds, wait for End + digit (5000) |
-| `END_PRESS_LOWS` / `DIGIT_PRESS_LOWS` | this many lows within 20 ms = press (2) |
-| `DIGIT_RELEASE_MS` / `END_HOLD_MS` | no low this long = released (30 / 15 ms) |
+| `END_PRESS_SCANS` / `DIGIT_PRESS_SCANS` | scans in a row to accept a press (2) |
 | `PIN_HAPTIC` / `HAPTIC_ENABLED` | vibration motor pin (3) / 0 = no motor |
 | `SCAN_SILENCE_MS` | no scans this long = everything released (40) |
 | `PULSE_MS` | button pulse length (300) |
