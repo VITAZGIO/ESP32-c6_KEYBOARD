@@ -281,13 +281,12 @@ pio device monitor -p COMxx
 
 No external USB-UART adapter is needed, the SuperMini has native USB.
 
-> ⚠️ No Cyrillic or spaces in the project path. The build goes **outside the project**, to
-> `%LOCALAPPDATA%\pio-build\ESP32-c6_KEYBOARD` (`build_dir` in `platformio.ini`), so
-> Nextcloud/OneDrive don't touch it (the build used to fail with `PermissionError ... .sconsign`)
-> and the project folder doesn't grow by hundreds of MB. The first build on a new PC is a full one.
+> ⚠️ No Cyrillic or spaces in the project path. The build lives in `.pio/` inside the project
+> (~230 MB, not in git). If the project sits in Nextcloud/OneDrive and the build fails with
+> `PermissionError ... .sconsign`, pause syncing while building or add `.pio` and
+> `managed_components` to the sync ignore list.
 
-After changing `sdkconfig.defaults` or `ota.csv`, delete `sdkconfig.esp32-c6*` and the build
-folder `%LOCALAPPDATA%\pio-build\ESP32-c6_KEYBOARD`.
+After changing `sdkconfig.defaults` or `ota.csv`, delete `sdkconfig.esp32-c6*` and `.pio/`.
 
 ---
 

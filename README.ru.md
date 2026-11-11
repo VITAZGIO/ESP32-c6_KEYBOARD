@@ -283,13 +283,12 @@ pio device monitor -p COMxx
 
 Внешний переходник USB-UART не нужен: у SuperMini встроенный USB.
 
-> ⚠️ Путь к проекту — без кириллицы и пробелов. Сборка кладётся **вне проекта**, в
-> `%LOCALAPPDATA%\pio-build\ESP32-c6_KEYBOARD` (`build_dir` в `platformio.ini`): так её не
-> трогает Nextcloud/OneDrive (раньше сборка падала с `PermissionError ... .sconsign`) и папка
-> проекта не раздувается на сотни мегабайт. Первая сборка на новом ПК — полная, несколько минут.
+> ⚠️ Путь к проекту — без кириллицы и пробелов. Сборка лежит в папке `.pio/` внутри проекта
+> (~230 МБ, в git не попадает). Если проект в Nextcloud/OneDrive и сборка падает с
+> `PermissionError ... .sconsign`, поставь синхронизацию на паузу на время сборки или добавь
+> `.pio` и `managed_components` в исключения синхронизации.
 
-После правки `sdkconfig.defaults` или `ota.csv` удаляй `sdkconfig.esp32-c6*` и папку сборки
-`%LOCALAPPDATA%\pio-build\ESP32-c6_KEYBOARD`.
+После правки `sdkconfig.defaults` или `ota.csv` удаляй `sdkconfig.esp32-c6*` и папку `.pio/`.
 
 ---
 
