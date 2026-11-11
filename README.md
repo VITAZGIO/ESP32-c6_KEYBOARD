@@ -133,6 +133,12 @@ silent. The ESP sits in **light sleep** (CPU stopped, memory kept, wakes in unde
 millisecond) and waits for End's read line to go low. Any key in End's row wakes it up,
 then the ESP checks End's own scan line to make sure it really was End.
 
+**Polling.** While the keyboard is awake (backlight on, recent typing) it scans all the
+time, and a held End only gives ~0.1 ms pulses every 2 ms. The level wake-up misses them,
+as a logic analyzer shows. So the ESP wakes itself every 20 ms and listens to End scans for
+6 ms: at most ~25 ms delay and ~5–8 mA while the keyboard scans. Once the keyboard sleeps,
+the check runs once a second and the draw is back under 1 mA.
+
 **Radio.** The board is a sleepy Zigbee End Device. It stays awake for 10 s after joining,
 then turns the receiver off and only checks in with the coordinator every 3 s. Button
 reports go straight to the coordinator.
@@ -363,6 +369,8 @@ Single digits keep typing as usual. With the PC off the script isn't needed.
 | `END_PRESS_SCANS` / `DIGIT_PRESS_SCANS` | scans in a row to accept a press (2) |
 | `PIN_HAPTIC` / `HAPTIC_ENABLED` | vibration motor pin (3) / 0 = no motor |
 | `SCAN_SILENCE_MS` | no scans this long = everything released (40) |
+| `POLL_PERIOD_MS` / `KB_CHECK_MS` | End polling while the keyboard scans / is idle (20 / 1000) |
+| `PIN_KB_ALIVE` | line that shows the keyboard is scanning (19) |
 | `PULSE_MS` | button pulse length (300) |
 | `OFF_RETRIES` / `OFF_RETRY_MS` | extra `OFF` packets (2 × 900 ms) |
 | `BAT_REPORT_MS` | battery report period (6 h) |

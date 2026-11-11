@@ -458,6 +458,37 @@ static bool step(void)
 // Главная задача
 // ============================================================
 
+// ============================================================
+// Опрос End, пока клава сканирует
+// ============================================================
+
+static volatile uint32_t s_alive_count;   // импульсов на линии PIN_KB_ALIVE за окно опроса
+static bool s_kb_scanning;                // клава сейчас сканирует (по последнему опросу)
+static volatile uint32_t s_poll_hits;     // для лога: сколько раз End нашёлся опросом
+
+static void IRAM_ATTR alive_isr(void *arg)
+{
+    s_alive_count++;
+}
+
+// Коротко слушаем матрицу. Линия скана End (PIN_END_SCAN) даёт импульсы только
+// при зажатом End, PIN_KB_ALIVE — всегда, пока клава сканирует.
+// true — End зажат. Чип в это время не спит (замок держит вызывающий).
+static bool poll_end(void)
+{
+    portENTER_CRITICAL(&s_mux);
+    s_scan_count = 0;
+    s_alive_count = 0;
+    portEXIT_CRITICAL(&s_mux);
+    gpio_intr_enable(PIN_END_SCAN);
+    gpio_intr_enable(PIN_KB_ALIVE);
+    vTaskDelay(pdMS_TO_TICKS(POLL_LISTEN_MS));
+    gpio_intr_disable(PIN_END_SCAN);
+    gpio_intr_disable(PIN_KB_ALIVE);
+    s_kb_scanning = s_alive_count > 0;
+    return s_scan_count >= POLL_END_PULSES;
+}
+
 static void keys_task(void *arg)
 {
     esp_pm_lock_handle_t awake;
@@ -498,27 +529,47 @@ static void keys_task(void *arg)
         // отпускаем чип спать — дальше всё должно успеть
         // до следующего нажатия или до отчёта батареи
 
-        // --- спячка: ждём End (прерывание по низкому уровню) или таймер батареи
+        // --- спячка. Два способа узнать про End:
+        //  1) клава спит и не сканирует — зажатый End держит линию в нуле, будит уровень;
+        //  2) клава сканирует — End приходит импульсами ~0.1 мс раз в 2 мс, спящий чип
+        //     их не замечает (видно анализатором). Тогда сами просыпаемся по таймеру
+        //     и коротко слушаем сканы End: раз в POLL_PERIOD_MS, пока клава сканирует,
+        //     и раз в KB_CHECK_MS, пока она молчит (вдруг проснулась от печати).
         gpio_intr_disable(PIN_END_SCAN);
-        esp_pm_lock_release(awake);
-        holding = false;
+        s_kb_scanning = true;            // только что был End — клава наверняка сканирует
 
-        xSemaphoreTake(s_wake, 0);          // сбросить старое пробуждение
-        if (s_joined_event) {
-            xSemaphoreGive(s_wake);          // уже есть работа
-        } else if (gpio_get_level(PIN_END) == 0) {
-            // линия ряда в нуле, а сканов нет — подождать, не крутиться вхолостую
-            vTaskDelay(pdMS_TO_TICKS(50));
-            xSemaphoreGive(s_wake);
-        } else {
-            gpio_intr_enable(PIN_END);
+        for (;;) {
+            esp_pm_lock_release(awake);
+            holding = false;
+
+            xSemaphoreTake(s_wake, 0);          // сбросить старое пробуждение
+            if (s_joined_event) {
+                xSemaphoreGive(s_wake);          // уже есть работа
+            } else if (gpio_get_level(PIN_END) == 0) {
+                // линия ряда в нуле, а сканов нет — подождать, не крутиться вхолостую
+                vTaskDelay(pdMS_TO_TICKS(50));
+                xSemaphoreGive(s_wake);
+            } else {
+                gpio_intr_enable(PIN_END);
+            }
+
+            uint32_t elapsed = now_ms() - last_bat;
+            uint32_t left = elapsed >= BAT_REPORT_MS ? 0 : BAT_REPORT_MS - elapsed;
+            uint32_t period = s_kb_scanning ? POLL_PERIOD_MS : KB_CHECK_MS;
+            bool poll = left > period;
+            uint32_t wait = poll ? period : left;
+            // тик = 1 мс; pdMS_TO_TICKS считает в 32 битах и на 6 часах переполняется
+            BaseType_t got = xSemaphoreTake(s_wake, (TickType_t)(wait / portTICK_PERIOD_MS));
+            gpio_intr_disable(PIN_END);
+            if (got == pdTRUE || !poll) break;       // End по уровню, сеть или отчёт батареи
+
+            esp_pm_lock_acquire(awake);
+            holding = true;
+            if (poll_end()) {
+                s_poll_hits++;
+                break;                               // End зажат — в активную фазу
+            }
         }
-
-        uint32_t elapsed = now_ms() - last_bat;
-        uint32_t left = elapsed >= BAT_REPORT_MS ? 0 : BAT_REPORT_MS - elapsed;
-        // тик = 1 мс; pdMS_TO_TICKS считает в 32 битах и на 6 часах переполняется
-        xSemaphoreTake(s_wake, (TickType_t)(left / portTICK_PERIOD_MS));
-        gpio_intr_disable(PIN_END);
     }
 }
 
@@ -614,9 +665,10 @@ static void pm_debug_task(void *arg)
         s_hist.w[s_hist.head % DBG_HIST] = w;
         s_hist.head++;
         dbg_print_hist("СОН, последние окна по 30 с");
-        ESP_LOGI(TAG, "за 30 с: пробуждений %lu, нажатий End %lu",
-                 (unsigned long)s_wakes, (unsigned long)s_end_presses);
-        s_wakes = s_end_presses = 0;
+        ESP_LOGI(TAG, "за 30 с: пробуждений %lu, нажатий End %lu (из них найдено опросом %lu), клава %s",
+                 (unsigned long)s_wakes, (unsigned long)s_end_presses, (unsigned long)s_poll_hits,
+                 s_kb_scanning ? "сканирует" : "молчит");
+        s_wakes = s_end_presses = s_poll_hits = 0;
     }
 }
 #endif
@@ -658,6 +710,9 @@ static void gpio_setup(void)
     gpio_isr_handler_add(PIN_SCAN, scan_isr, NULL);
     gpio_isr_handler_add(PIN_END, end_isr, NULL);
     gpio_isr_handler_add(PIN_END_SCAN, end_scan_isr, NULL);
+    gpio_set_intr_type(PIN_KB_ALIVE, GPIO_INTR_NEGEDGE);
+    gpio_isr_handler_add(PIN_KB_ALIVE, alive_isr, NULL);
+    gpio_intr_disable(PIN_KB_ALIVE);   // включается только на окно опроса
     gpio_intr_disable(PIN_END_SCAN);
     gpio_intr_disable(PIN_END);
     gpio_intr_disable(PIN_SCAN);   // включается на время зажатого End
