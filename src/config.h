@@ -17,6 +17,8 @@
 #define PIN_HAPTIC           3
 #define HAPTIC_ACTIVE_LEVEL  1     // 1 — транзистор открывается высоким уровнем
 #define HAPTIC_FIRE_MS       45    // длина вибрации «кнопка принята»
+#define HAPTIC_END_MS        100   // бзыньк «End распознан» (1 — ряд 1, 2 — ряд 2, 3 — настройки)
+#define HAPTIC_END_GAP_MS    90    // пауза между бзыньками
 
 #define N_DIGITS 6
 #define DIGIT_PINS_INIT {19, 2, 5, 20, 18, 14}    // цифры 1..6 (линии чтения)

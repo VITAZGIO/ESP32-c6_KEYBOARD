@@ -8,8 +8,9 @@
  * Два ряда кнопок и настройки. Цифры везде срабатывают мгновенно.
  *
  *   End + цифра 1..6                         -> Btn 1..6 (ряд 1) или Btn 1..6 dbl (ряд 2)
+ *   как только End распознан — бзыньк: один — ряд 1, два — ряд 2, три — настройки
  *   тап End (коротко, без цифр)              -> переключить ряд: 1 -> 2 -> 1 ...
- *                                               вибро: один тик — ряд 1, два — ряд 2
+ *                                               (следующее нажатие End покажет ряд бзыньками)
  *   5 с без тапов и кнопок                   -> снова ряд 1
  *   держал End 2 с (вибро), отпустил, в течение 1.5 с снова держал 2 с (двойное вибро),
  *   отпустил, в течение 5 с End + цифра      -> настройки:
@@ -335,11 +336,13 @@ static void end_pressed(uint32_t now)
         s_svc_stage = 0;
         if ((int32_t)(now - s_svc_at) <= SERVICE_WINDOW_MS) {
             s_mode = MODE_SERVICE;
+            haptic_play(HAP_END_SVC);
             ESP_LOGI(TAG, "[MODE] НАСТРОЙКИ");
             return;
         }
     }
     s_mode = row_now(now) ? MODE_DBL : MODE_BASE;
+    haptic_play(s_mode == MODE_DBL ? HAP_END2 : HAP_END1);   // «End понял, ряд такой-то»
     ESP_LOGI(TAG, "[MODE] ряд %d", s_mode == MODE_DBL ? 2 : 1);
 }
 
@@ -362,7 +365,6 @@ static void end_released(uint32_t released_at)
         s_svc_stage = 0;
         s_row = !row_now(s_end_down_at);
         s_last_act = released_at;
-        haptic_play(s_row ? HAP_ROW2 : HAP_ROW1);
         ESP_LOGI(TAG, "[MODE] тап -> ряд %d", s_row + 1);
     } else if (held >= SERVICE_HOLD_MS) {
         s_svc_stage = (s_svc_stage == 1) ? 2 : 1;

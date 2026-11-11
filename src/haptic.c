@@ -14,6 +14,10 @@
 static esp_timer_handle_t s_timer;
 static const uint16_t *s_seq;
 static uint8_t s_len, s_pos;
+static volatile bool s_busy;          // рисунок ещё играет
+static volatile int s_queued = -1;    // HAP_FIRE, ждущий конца текущего рисунка
+
+static void start(haptic_t p);
 
 static void motor(bool on)
 {
@@ -22,7 +26,12 @@ static void motor(bool on)
 
 static void step_cb(void *arg)
 {
-    if (s_pos >= s_len) { motor(false); return; }
+    if (s_pos >= s_len) {
+        motor(false);
+        s_busy = false;
+        if (s_queued >= 0) { haptic_t q = (haptic_t)s_queued; s_queued = -1; start(q); }
+        return;
+    }
     motor((s_pos & 1) == 0);                       // чётные — вкл, нечётные — пауза
     esp_timer_start_once(s_timer, (uint64_t)s_seq[s_pos++] * 1000);
 }
@@ -43,20 +52,23 @@ void haptic_init(void)
 }
 
 static const uint16_t P_FIRE[]    = { HAPTIC_FIRE_MS };
-static const uint16_t P_ROW1[]    = { 30 };
-static const uint16_t P_ROW2[]    = { 30, 70, 30 };
+static const uint16_t P_END1[]    = { HAPTIC_END_MS };
+static const uint16_t P_END2[]    = { HAPTIC_END_MS, HAPTIC_END_GAP_MS, HAPTIC_END_MS };
+static const uint16_t P_ENDSVC[]  = { HAPTIC_END_MS, HAPTIC_END_GAP_MS, HAPTIC_END_MS,
+                                      HAPTIC_END_GAP_MS, HAPTIC_END_MS };
 static const uint16_t P_SVC1[]    = { 250 };
 static const uint16_t P_SVC2[]    = { 250, 100, 250 };
 static const uint16_t P_FAIL[]    = { 40, 80, 40, 80, 40 };
 static const uint16_t P_CHORD[]   = { 600 };
 
-void haptic_play(haptic_t p)
+static void start(haptic_t p)
 {
     const uint16_t *seq; uint8_t len;
     switch (p) {
     case HAP_FIRE:        seq = P_FIRE;    len = sizeof(P_FIRE) / 2;    break;
-    case HAP_ROW1:        seq = P_ROW1;    len = sizeof(P_ROW1) / 2;    break;
-    case HAP_ROW2:        seq = P_ROW2;    len = sizeof(P_ROW2) / 2;    break;
+    case HAP_END1:        seq = P_END1;    len = sizeof(P_END1) / 2;    break;
+    case HAP_END2:        seq = P_END2;    len = sizeof(P_END2) / 2;    break;
+    case HAP_END_SVC:     seq = P_ENDSVC;  len = sizeof(P_ENDSVC) / 2;  break;
     case HAP_SVC1:        seq = P_SVC1;    len = sizeof(P_SVC1) / 2;    break;
     case HAP_SVC2:        seq = P_SVC2;    len = sizeof(P_SVC2) / 2;    break;
     case HAP_FAIL:        seq = P_FAIL;    len = sizeof(P_FAIL) / 2;    break;
@@ -65,7 +77,16 @@ void haptic_play(haptic_t p)
     }
     esp_timer_stop(s_timer);        // новый рисунок перебивает старый
     s_seq = seq; s_len = len; s_pos = 0;
+    s_busy = true;
     step_cb(NULL);
+}
+
+void haptic_play(haptic_t p)
+{
+    // вибро цифры не обрывает бзыньки End (по ним видно ряд) — встаёт в очередь
+    if (p == HAP_FIRE && s_busy) { s_queued = p; return; }
+    s_queued = -1;
+    start(p);
 }
 
 #else

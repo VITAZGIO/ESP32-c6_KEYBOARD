@@ -154,8 +154,9 @@ There are two rows of buttons. Digits always fire instantly.
 
 | Action | Result | Vibration |
 |---|---|---|
-| End + digit 1…6 | `Btn 1`…`Btn 6` (row 1) or `Btn 1 dbl`…`Btn 6 dbl` (row 2) | short |
-| tap End (under 0.6 s, no digits) | toggle row: 1 → 2 → 1 … | one tick = row 1, two = row 2 |
+| press End | the board noticed End is held | right away: 1 buzz = row 1, 2 = row 2, 3 = service mode |
+| End + digit 1…6 | `Btn 1`…`Btn 6` (row 1) or `Btn 1 dbl`…`Btn 6 dbl` (row 2) | short, after the End buzzes |
+| tap End (under 0.6 s, no digits) | toggle row: 1 → 2 → 1 … | the next End press shows the new row |
 | 5 seconds without taps or buttons | back to row 1 | — |
 | End 2 s → release → within 1.5 s End 2 s again → release → within 5 s End + any of **1, 2, 3** | Zigbee network reset | long on each hold (second is double), then very long |
 | same, but End + any of **4, 5, 6** | OTA mode (Wi-Fi, 10 min) | same |
